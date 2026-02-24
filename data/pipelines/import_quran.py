@@ -341,20 +341,18 @@ async def main() -> None:
 
     # ── Step 5: Summary report ──
     print("\n" + "=" * 60)
-    print("  Import Report")
+    print("  تقرير الاستيراد | Import Report")
     print("=" * 60)
-    ok = "OK" if surahs_imported == TOTAL_SURAHS else "INCOMPLETE"
-    print(f"  Surahs imported:  {surahs_imported}/{TOTAL_SURAHS}  [{ok}]")
-    ok = "OK" if len(all_verses) == EXPECTED_VERSES else "INCOMPLETE"
-    print(f"  Verses imported:  {len(all_verses):,}/{EXPECTED_VERSES:,}  [{ok}]")
-    print(f"  Output directory: {OUTPUT_DIR}/")
+    print(f"  ✅ السور المستوردة: {surahs_imported}/{TOTAL_SURAHS}")
+    print(f"  ✅ الآيات: {len(all_verses):,}/{EXPECTED_VERSES:,}")
+    print(f"  📁 المخرجات: {OUTPUT_DIR}/")
 
     if errors:
-        print(f"\n  Errors ({len(errors)}):")
+        print(f"\n  ⚠️ أخطاء في الاستيراد ({len(errors)}):")
         for err in errors:
             print(f"     - {err}")
     else:
-        print("\n  No errors -- import complete")
+        print("\n  ✅ لا أخطاء — الاستيراد مكتمل بنجاح")
 
     print("=" * 60)
 

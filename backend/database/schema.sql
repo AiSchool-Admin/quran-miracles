@@ -88,18 +88,27 @@ CREATE TABLE verses (
     embedding_broad        vector(1536),   -- text-embedding-3-large (عام)
     embedding_multilingual vector(1536),   -- text-embedding-3-large (متعدد اللغات)
 
-    -- بحث نصي كامل
-    search_vector          tsvector GENERATED ALWAYS AS (
-        to_tsvector('simple', COALESCE(text_clean, ''))
-    ) STORED,
+    -- بحث نصي كامل (يُحدَّث تلقائياً عبر trigger)
+    search_vector          tsvector,
 
     UNIQUE(surah_number, verse_number)
 );
 
+-- Trigger لتحديث search_vector تلقائياً عند INSERT/UPDATE
+CREATE OR REPLACE FUNCTION verses_search_vector_update() RETURNS trigger AS $$
+BEGIN
+    NEW.search_vector := to_tsvector('simple', COALESCE(NEW.text_clean, ''));
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_verses_search_vector
+    BEFORE INSERT OR UPDATE ON verses
+    FOR EACH ROW EXECUTE FUNCTION verses_search_vector_update();
+
 -- فهارس الأداء للآيات
 CREATE INDEX idx_verses_search       ON verses USING GIN(search_vector);
-CREATE INDEX idx_verses_embedding    ON verses USING ivfflat(embedding_precise vector_cosine_ops)
-    WITH (lists = 100);
+CREATE INDEX idx_verses_embedding    ON verses USING hnsw(embedding_precise vector_cosine_ops);
 CREATE INDEX idx_verses_surah        ON verses(surah_number);
 CREATE INDEX idx_verses_juz          ON verses(juz);
 

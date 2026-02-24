@@ -8,27 +8,20 @@ Verifies:
 - Scientific correlation criteria constraints work
 """
 
-import asyncio
 import os
 
 import asyncpg
 import pytest
+import pytest_asyncio
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql://quran_user:changeme@localhost:5432/quran_miracles",
+    "postgresql://test_user:test_pass@localhost:5432/quran_miracles_test",
 )
 
 
-@pytest.fixture(scope="module")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest.fixture(scope="module")
-async def db(event_loop):
+@pytest_asyncio.fixture(scope="module")
+async def db():
     conn = await asyncpg.connect(DATABASE_URL)
     yield conn
     await conn.close()
@@ -67,7 +60,7 @@ async def test_all_tables_exist(db):
     existing = {row["table_name"] for row in rows}
 
     for table in EXPECTED_TABLES:
-        assert table in existing, f"Table '{table}' not found in database"
+        assert table in existing, f"Table '{table}' not found"
 
 
 @pytest.mark.asyncio
@@ -150,9 +143,9 @@ async def test_tafseer_books_correct_order(db):
     for i, (slug, methodology, order) in enumerate(expected):
         assert rows[i]["slug"] == slug, \
             f"Position {order}: expected '{slug}', got '{rows[i]['slug']}'"
-        actual_method = rows[i]["methodology"]
-        assert actual_method == methodology, \
-            f"Tafseer '{slug}': expected '{methodology}', got '{actual_method}'"
+        actual = rows[i]["methodology"]
+        assert actual == methodology, \
+            f"Tafseer '{slug}': expected '{methodology}', got '{actual}'"
         assert rows[i]["priority_order"] == order
 
 
@@ -160,7 +153,8 @@ async def test_tafseer_books_correct_order(db):
 async def test_shaarawy_has_correct_metadata(db):
     """Verify al-Shaarawy entry has correct special metadata."""
     row = await db.fetchrow("""
-        SELECT name_ar, author_ar, author_death_year, methodology, use_cases
+        SELECT name_ar, author_ar, author_death_year,
+               methodology, use_cases
         FROM tafseer_books
         WHERE slug = 'al-shaarawy'
     """)
@@ -191,11 +185,10 @@ async def test_pgvector_extension_active(db):
 
 @pytest.mark.asyncio
 async def test_pgvector_can_compute_distance(db):
-    """Verify pgvector can compute cosine distance between vectors."""
+    """Verify pgvector can compute cosine distance."""
     result = await db.fetchval("""
         SELECT 1 - ('[1,0,0]'::vector(3) <=> '[0,1,0]'::vector(3))
     """)
-    # Cosine similarity of orthogonal vectors should be ~0
     assert result is not None
 
 
@@ -215,21 +208,20 @@ async def test_pg_trgm_extension_active(db):
 # ══════════════════════════════════════════
 
 @pytest.mark.asyncio
-async def test_discoveries_accepts_tier_0_to_4(db):
-    """Verify discoveries table accepts tier_0 through tier_4."""
-    # Check that the constraint allows all 5 tiers
+async def test_discoveries_confidence_tier_constraint(db):
+    """Verify discoveries table has tier_0 through tier_4 constraint."""
     row = await db.fetchrow("""
-        SELECT conname, consrc
+        SELECT conname
         FROM pg_constraint
         WHERE conrelid = 'discoveries'::regclass
           AND conname LIKE '%confidence_tier%'
     """)
-    assert row is not None, "confidence_tier constraint not found on discoveries"
+    assert row is not None, "confidence_tier constraint not found"
 
 
 @pytest.mark.asyncio
 async def test_scientific_correlations_has_seven_criteria(db):
-    """Verify scientific_correlations has all 7 evaluation criteria columns."""
+    """Verify scientific_correlations has all 7 evaluation criteria."""
     rows = await db.fetch("""
         SELECT column_name
         FROM information_schema.columns

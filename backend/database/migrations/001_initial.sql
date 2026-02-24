@@ -74,15 +74,23 @@ CREATE TABLE IF NOT EXISTS verses (
     embedding_precise      vector(1536),
     embedding_broad        vector(1536),
     embedding_multilingual vector(1536),
-    search_vector          tsvector GENERATED ALWAYS AS (
-        to_tsvector('simple', COALESCE(text_clean, ''))
-    ) STORED,
+    search_vector          tsvector,
     UNIQUE(surah_number, verse_number)
 );
 
+CREATE OR REPLACE FUNCTION verses_search_vector_update() RETURNS trigger AS $$
+BEGIN
+    NEW.search_vector := to_tsvector('simple', COALESCE(NEW.text_clean, ''));
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_verses_search_vector
+    BEFORE INSERT OR UPDATE ON verses
+    FOR EACH ROW EXECUTE FUNCTION verses_search_vector_update();
+
 CREATE INDEX IF NOT EXISTS idx_verses_search    ON verses USING GIN(search_vector);
-CREATE INDEX IF NOT EXISTS idx_verses_embedding ON verses USING ivfflat(embedding_precise vector_cosine_ops)
-    WITH (lists = 100);
+CREATE INDEX IF NOT EXISTS idx_verses_embedding ON verses USING hnsw(embedding_precise vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_verses_surah     ON verses(surah_number);
 CREATE INDEX IF NOT EXISTS idx_verses_juz       ON verses(juz);
 

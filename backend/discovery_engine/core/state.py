@@ -1,31 +1,43 @@
 """LangGraph state definitions for the discovery engine."""
 
-from dataclasses import dataclass, field
-from typing import Any
+from __future__ import annotations
+
+from typing import Literal, TypedDict
 
 
-@dataclass
-class DiscoveryState:
-    """State passed between LangGraph nodes during discovery."""
+class DiscoveryState(TypedDict, total=False):
+    """Shared state passed between all LangGraph nodes.
 
-    query: str = ""
-    surah: int | None = None
-    verse: int | None = None
+    Uses TypedDict (not dataclass) for native LangGraph compatibility.
+    ``total=False`` makes every key optional so nodes can update
+    only the fields they own.
+    """
 
-    # Results from each agent
-    quran_context: dict[str, Any] = field(default_factory=dict)
-    linguistic_analysis: dict[str, Any] = field(default_factory=dict)
-    scientific_correlations: list[dict[str, Any]] = field(default_factory=list)
-    humanities_connections: list[dict[str, Any]] = field(default_factory=list)
-    tafseer_insights: list[dict[str, Any]] = field(default_factory=list)
-    pattern_results: dict[str, Any] = field(default_factory=dict)
+    # ── Inputs ─────────────────────────────────────────────
+    query: str
+    mode: Literal["guided", "autonomous", "cross_domain"]
+    disciplines: list[str]
 
-    # Synthesis
-    synthesis: dict[str, Any] = field(default_factory=dict)
-    confidence_tier: str = "tier_0"
-    objections: list[str] = field(default_factory=list)
+    # ── Agent results ──────────────────────────────────────
+    verses: list[dict]
+    linguistic_analysis: dict
+    science_findings: list[dict]
+    tafseer_findings: dict
+    humanities_findings: list[dict]
 
-    # Control flow
-    should_deepen: bool = False
-    iteration: int = 0
-    max_iterations: int = 3
+    # ── Synthesis ──────────────────────────────────────────
+    synthesis: str
+    quality_score: float
+    quality_issues: list[str]
+    confidence_tier: str
+    predictions: list[dict]
+
+    # ── Control flow ───────────────────────────────────────
+    should_deepen: bool
+    iteration_count: int
+
+    # ── Streaming ──────────────────────────────────────────
+    streaming_updates: list[dict]
+
+    # ── Error handling ─────────────────────────────────────
+    error: str | None

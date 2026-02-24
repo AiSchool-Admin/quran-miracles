@@ -34,6 +34,11 @@ Thumbs.db
 htmlcov/
 .pytest_cache/
 
+# === Downloaded Data (regenerate via pipelines) ===
+data/quran/*.json
+data/tafseers/*.json
+data/science/*.json
+
 # === Misc ===
 *.log
 *.pid

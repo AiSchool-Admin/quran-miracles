@@ -19,9 +19,33 @@ DATABASE_URL = os.environ.get(
 )
 
 
+async def _can_connect() -> bool:
+    """Check if PostgreSQL is reachable."""
+    try:
+        import asyncio
+
+        conn = await asyncio.wait_for(asyncpg.connect(DATABASE_URL), timeout=3)
+        await conn.close()
+        return True
+    except Exception:
+        return False
+
+
+_db_available: bool | None = None
+
+
+async def _is_db_available() -> bool:
+    global _db_available
+    if _db_available is None:
+        _db_available = await _can_connect()
+    return _db_available
+
+
 @pytest.fixture
 async def db():
     """Function-scoped DB connection — one per test."""
+    if not await _is_db_available():
+        pytest.skip("PostgreSQL not available")
     conn = await asyncpg.connect(DATABASE_URL)
     yield conn
     await conn.close()

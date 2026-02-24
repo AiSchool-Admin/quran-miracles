@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 REQUIRED_TAFSEERS = [
     "ibn_kathir",
     "tabari",

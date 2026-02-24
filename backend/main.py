@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import discovery, quran, prediction
+from api.routes import discovery, prediction, quran
 
 
 @asynccontextmanager

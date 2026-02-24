@@ -7,8 +7,7 @@ import hashlib
 import sys
 from pathlib import Path
 
-
-EXPECTED_CHECKSUMS = {
+EXPECTED_CHECKSUMS: dict[str, str] = {
     # Will be populated with actual checksums after initial data import
 }
 

@@ -36,10 +36,9 @@ async def init_pool(min_size: int = 5, max_size: int = 20) -> asyncpg.Pool:
         max_size=max_size,
         init=_init_connection,
     )
-    return _pool  # type: ignore[return-value]
+    return _pool
 
-
-async def _init_connection(conn: asyncpg.Connection) -> None:  # type: ignore[type-arg]
+async def _init_connection(conn: asyncpg.Connection) -> None:
     """Per-connection initialization: register pgvector type."""
     await register_vector(conn)
 
@@ -57,8 +56,7 @@ async def get_pool() -> asyncpg.Pool:
     global _pool  # noqa: PLW0603
     if _pool is None:
         _pool = await init_pool()
-    return _pool  # type: ignore[return-value]
-
+    return _pool
 
 async def get_db() -> AsyncIterator[Any]:
     """FastAPI dependency: acquire a connection from the pool.

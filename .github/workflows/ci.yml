@@ -63,6 +63,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/quran_miracles_test
           REDIS_URL: redis://localhost:6379
+          _MOCK_DB: "1"
 
       - name: Lint and type check
         run: |

@@ -27,7 +27,7 @@ jobs:
           echo "diff_lines=$(wc -l < /tmp/pr_diff.txt)" >> $GITHUB_OUTPUT
 
       - name: Claude review
-        if: steps.diff.outputs.diff_lines > 0
+        if: ${{ steps.diff.outputs.diff_lines > 0 && secrets.ANTHROPIC_API_KEY != '' }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

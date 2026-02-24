@@ -4,6 +4,11 @@ Uses raw asyncpg for connection pooling and pgvector support.
 Provides get_db() for FastAPI dependency injection.
 """
 
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from typing import Any
+
 import asyncpg
 from pgvector.asyncpg import register_vector
 
@@ -21,7 +26,7 @@ def _get_dsn() -> str:
 
 async def init_pool(min_size: int = 5, max_size: int = 20) -> asyncpg.Pool:
     """Initialize the asyncpg connection pool with pgvector support."""
-    global _pool
+    global _pool  # noqa: PLW0603
     if _pool is not None:
         return _pool
 
@@ -31,17 +36,17 @@ async def init_pool(min_size: int = 5, max_size: int = 20) -> asyncpg.Pool:
         max_size=max_size,
         init=_init_connection,
     )
-    return _pool
+    return _pool  # type: ignore[return-value]
 
 
-async def _init_connection(conn: asyncpg.Connection) -> None:
+async def _init_connection(conn: asyncpg.Connection) -> None:  # type: ignore[type-arg]
     """Per-connection initialization: register pgvector type."""
     await register_vector(conn)
 
 
 async def close_pool() -> None:
     """Close the connection pool gracefully."""
-    global _pool
+    global _pool  # noqa: PLW0603
     if _pool is not None:
         await _pool.close()
         _pool = None
@@ -49,18 +54,18 @@ async def close_pool() -> None:
 
 async def get_pool() -> asyncpg.Pool:
     """Get or create the connection pool."""
-    global _pool
+    global _pool  # noqa: PLW0603
     if _pool is None:
         _pool = await init_pool()
-    return _pool
+    return _pool  # type: ignore[return-value]
 
 
-async def get_db() -> asyncpg.Connection:
+async def get_db() -> AsyncIterator[Any]:
     """FastAPI dependency: acquire a connection from the pool.
 
     Usage:
         @router.get("/example")
-        async def example(db = Depends(get_db)):
+        async def example(db=Depends(get_db)):
             rows = await db.fetch("SELECT * FROM surahs")
     """
     pool = await get_pool()
@@ -70,13 +75,14 @@ async def get_db() -> asyncpg.Connection:
 
 async def apply_schema(schema_path: str | None = None) -> None:
     """Apply schema.sql to the database."""
+    import asyncio
     from pathlib import Path
 
     if schema_path is None:
         schema_path = str(Path(__file__).parent / "schema.sql")
 
-    with open(schema_path, "r", encoding="utf-8") as f:
-        sql = f.read()
+    path = Path(schema_path)
+    sql = await asyncio.to_thread(path.read_text, encoding="utf-8")
 
     pool = await get_pool()
     async with pool.acquire() as conn:

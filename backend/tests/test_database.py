@@ -150,8 +150,9 @@ async def test_tafseer_books_correct_order(db):
     for i, (slug, methodology, order) in enumerate(expected):
         assert rows[i]["slug"] == slug, \
             f"Position {order}: expected '{slug}', got '{rows[i]['slug']}'"
-        assert rows[i]["methodology"] == methodology, \
-            f"Tafseer '{slug}': expected methodology '{methodology}', got '{rows[i]['methodology']}'"
+        actual_method = rows[i]["methodology"]
+        assert actual_method == methodology, \
+            f"Tafseer '{slug}': expected '{methodology}', got '{actual_method}'"
         assert rows[i]["priority_order"] == order
 
 

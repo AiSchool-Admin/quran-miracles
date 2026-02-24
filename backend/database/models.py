@@ -1,10 +1,11 @@
 """SQLAlchemy models — Full schema defined in docs/05_database_schema.md."""
 
-from sqlalchemy import Column, Integer, String, Text, Float, Boolean, ForeignKey, DateTime
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import DeclarativeBase, relationship
 import uuid
 from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import DeclarativeBase, relationship
 
 
 class Base(DeclarativeBase):

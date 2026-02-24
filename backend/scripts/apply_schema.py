@@ -1,25 +1,31 @@
-"""Apply database schema to PostgreSQL."""
+"""Apply database schema to PostgreSQL.
+
+Uses raw SQL from schema.sql (which includes pgvector, all tables, and seed data)
+instead of SQLAlchemy metadata, since schema.sql is the source of truth.
+"""
 
 import asyncio
 import os
+from pathlib import Path
 
-from sqlalchemy.ext.asyncio import create_async_engine
-
-from database.models import Base
+import asyncpg
 
 
-async def apply_schema():
+async def apply_schema() -> None:
     database_url = os.environ.get(
         "DATABASE_URL",
-        "postgresql+asyncpg://localhost:5432/quran_miracles",
+        "postgresql://localhost:5432/quran_miracles",
     )
-    engine = create_async_engine(database_url)
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    schema_path = Path(__file__).parent.parent / "database" / "schema.sql"
+    sql = schema_path.read_text(encoding="utf-8")
 
-    await engine.dispose()
-    print("Schema applied successfully.")
+    conn = await asyncpg.connect(database_url)
+    try:
+        await conn.execute(sql)
+        print("Schema applied successfully.")
+    finally:
+        await conn.close()
 
 
 if __name__ == "__main__":

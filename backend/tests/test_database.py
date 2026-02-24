@@ -12,7 +12,6 @@ import os
 
 import asyncpg
 import pytest
-import pytest_asyncio
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
@@ -20,8 +19,9 @@ DATABASE_URL = os.environ.get(
 )
 
 
-@pytest_asyncio.fixture(scope="module")
+@pytest.fixture
 async def db():
+    """Function-scoped DB connection — one per test."""
     conn = await asyncpg.connect(DATABASE_URL)
     yield conn
     await conn.close()
@@ -48,7 +48,6 @@ EXPECTED_TABLES = [
 ]
 
 
-@pytest.mark.asyncio
 async def test_all_tables_exist(db):
     """Verify all 13 core tables exist in the database."""
     rows = await db.fetch("""
@@ -63,7 +62,6 @@ async def test_all_tables_exist(db):
         assert table in existing, f"Table '{table}' not found"
 
 
-@pytest.mark.asyncio
 async def test_surahs_table_columns(db):
     """Verify surahs table has key columns including generated ones."""
     rows = await db.fetch("""
@@ -82,7 +80,6 @@ async def test_surahs_table_columns(db):
         assert col in columns, f"Column 'surahs.{col}' not found"
 
 
-@pytest.mark.asyncio
 async def test_verses_table_has_three_embeddings(db):
     """Verify verses table has 3 vector(1536) embedding columns."""
     rows = await db.fetch("""
@@ -98,7 +95,6 @@ async def test_verses_table_has_three_embeddings(db):
     assert "embedding_multilingual" in embedding_cols
 
 
-@pytest.mark.asyncio
 async def test_words_table_has_arabert_embedding(db):
     """Verify words table has vector(768) for AraBERT."""
     row = await db.fetchrow("""
@@ -114,14 +110,12 @@ async def test_words_table_has_arabert_embedding(db):
 # التحقق من التفاسير السبعة
 # ══════════════════════════════════════════
 
-@pytest.mark.asyncio
 async def test_seven_tafseer_books_exist(db):
     """Verify exactly 7 tafseer books are seeded."""
     count = await db.fetchval("SELECT COUNT(*) FROM tafseer_books")
     assert count == 7, f"Expected 7 tafseer books, found {count}"
 
 
-@pytest.mark.asyncio
 async def test_tafseer_books_correct_order(db):
     """Verify tafseer books are in the correct priority order."""
     rows = await db.fetch("""
@@ -149,7 +143,6 @@ async def test_tafseer_books_correct_order(db):
         assert rows[i]["priority_order"] == order
 
 
-@pytest.mark.asyncio
 async def test_shaarawy_has_correct_metadata(db):
     """Verify al-Shaarawy entry has correct special metadata."""
     row = await db.fetchrow("""
@@ -171,7 +164,6 @@ async def test_shaarawy_has_correct_metadata(db):
 # التحقق من عمل pgvector
 # ══════════════════════════════════════════
 
-@pytest.mark.asyncio
 async def test_pgvector_extension_active(db):
     """Verify pgvector extension is installed and operational."""
     row = await db.fetchrow("""
@@ -183,7 +175,6 @@ async def test_pgvector_extension_active(db):
     assert row["extname"] == "vector"
 
 
-@pytest.mark.asyncio
 async def test_pgvector_can_compute_distance(db):
     """Verify pgvector can compute cosine distance."""
     result = await db.fetchval("""
@@ -192,7 +183,6 @@ async def test_pgvector_can_compute_distance(db):
     assert result is not None
 
 
-@pytest.mark.asyncio
 async def test_pg_trgm_extension_active(db):
     """Verify pg_trgm extension is installed."""
     row = await db.fetchrow("""
@@ -207,7 +197,6 @@ async def test_pg_trgm_extension_active(db):
 # التحقق من قيود الـ CHECK
 # ══════════════════════════════════════════
 
-@pytest.mark.asyncio
 async def test_discoveries_confidence_tier_constraint(db):
     """Verify discoveries table has tier_0 through tier_4 constraint."""
     row = await db.fetchrow("""
@@ -219,7 +208,6 @@ async def test_discoveries_confidence_tier_constraint(db):
     assert row is not None, "confidence_tier constraint not found"
 
 
-@pytest.mark.asyncio
 async def test_scientific_correlations_has_seven_criteria(db):
     """Verify scientific_correlations has all 7 evaluation criteria."""
     rows = await db.fetch("""

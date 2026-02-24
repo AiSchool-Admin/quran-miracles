@@ -1,0 +1,44 @@
+# === Core Framework ===
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.9.0
+pydantic-settings==2.6.0
+
+# === AI / LangGraph ===
+langgraph==0.2.0
+langchain-anthropic==0.3.0
+langchain-core==0.3.0
+langchain-community==0.3.0
+anthropic==0.40.0
+
+# === Arabic NLP ===
+camel-tools==1.2.0
+
+# === Database ===
+sqlalchemy[asyncio]==2.0.35
+asyncpg==0.30.0
+pgvector==0.3.6
+neo4j==5.25.0
+alembic==1.14.0
+
+# === Cache & Tasks ===
+redis==5.2.0
+celery==5.4.0
+apscheduler==3.10.4
+
+# === Embeddings ===
+openai==1.55.0
+
+# === SSE Streaming ===
+sse-starlette==2.1.0
+
+# === Utilities ===
+httpx==0.28.0
+python-dotenv==1.0.1
+python-multipart==0.0.12
+
+# === Dev / Testing ===
+pytest==8.3.0
+pytest-asyncio==0.24.0
+ruff==0.8.0
+mypy==1.13.0

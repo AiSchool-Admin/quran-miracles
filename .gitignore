@@ -1,0 +1,41 @@
+# === Dependencies ===
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# === Build ===
+.next/
+out/
+dist/
+build/
+*.egg-info/
+*.tsbuildinfo
+
+# === Environment ===
+.env
+.env.local
+.env.production.local
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Testing ===
+.coverage
+htmlcov/
+.pytest_cache/
+
+# === Misc ===
+*.log
+*.pid
+.vercel
+.railway

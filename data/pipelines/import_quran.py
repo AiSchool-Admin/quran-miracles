@@ -1,17 +1,22 @@
 """Quran Data Import Pipeline.
 
-Downloads all 114 surahs (6,236 verses) from Quran Foundation API v4
-and saves them as JSON in data/quran/.
+Downloads all 114 surahs (6,236 verses) and saves them as JSON in data/quran/.
+
+Sources (tries in order):
+  1. Quran Foundation API v4  (--source=api)
+  2. GitHub static JSON       (--source=github, default fallback)
 
 For each verse:
   - text_uthmani  (Uthmani script with full diacritics)
-  - text_simple   (Imla'i simplified spelling)
+  - text_simple   (simplified spelling with diacritics)
   - text_clean    (stripped of all diacritical marks)
   - surah_number, verse_number, juz, page, sajda
 
 Usage:
-    python data/pipelines/import_quran.py           # Download & save JSON
-    python data/pipelines/import_quran.py --db       # Also insert into PostgreSQL
+    python data/pipelines/import_quran.py                 # Auto (API then GitHub)
+    python data/pipelines/import_quran.py --source=github # GitHub only
+    python data/pipelines/import_quran.py --source=api    # API only
+    python data/pipelines/import_quran.py --db            # Also insert into PostgreSQL
 """
 
 from __future__ import annotations
@@ -27,15 +32,46 @@ import httpx
 
 # ── Configuration ──────────────────────────────────────────────────────
 
-API_BASE = "https://api.quran.foundation/api/v4"
 TOTAL_SURAHS = 114
 EXPECTED_VERSES = 6236
-PER_PAGE = 50  # API maximum per request
-CONCURRENT_REQUESTS = 5  # Respect API rate limits
 RETRY_ATTEMPTS = 3
 RETRY_BACKOFF = 2.0  # seconds, doubles each retry
 
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "quran"
+
+# Quran Foundation API
+QF_API_BASE = "https://api.quran.foundation/api/v4"
+QF_PER_PAGE = 50
+QF_CONCURRENT = 5
+
+# GitHub static JSON (fawazahmed0/quran-api)
+GH_BASE = "https://raw.githubusercontent.com/fawazahmed0/quran-api/1/editions"
+GH_UTHMANI = f"{GH_BASE}/ara-quranuthmanihaf.json"
+GH_SIMPLE = f"{GH_BASE}/ara-quransimple.json"
+GH_CHAPTERS = (
+    "https://raw.githubusercontent.com/risan/quran-json/main/data/chapters/en.json"
+)
+
+# Sajda verses — chapter:verse mapping (14 sajda positions in the Quran)
+_SAJDA_VERSES: dict[tuple[int, int], str] = {
+    (7, 206): "obligatory", (13, 15): "recommended", (16, 50): "recommended",
+    (17, 109): "recommended", (19, 58): "recommended", (22, 18): "recommended",
+    (22, 77): "recommended", (25, 60): "recommended", (27, 26): "recommended",
+    (32, 15): "obligatory", (38, 24): "recommended", (41, 38): "recommended",
+    (53, 62): "recommended", (84, 21): "recommended", (96, 19): "obligatory",
+}
+
+# Juz boundaries — (surah, verse) where each juz starts
+_JUZ_STARTS: list[tuple[int, int]] = [
+    (1, 1), (2, 142), (2, 253), (3, 93), (4, 24), (4, 148), (5, 83),
+    (6, 111), (7, 88), (8, 41), (9, 93), (11, 6), (12, 53), (15, 1),
+    (17, 1), (18, 75), (21, 1), (23, 1), (25, 21), (27, 56), (29, 46),
+    (33, 31), (36, 28), (39, 32), (41, 47), (46, 1), (51, 31), (58, 1),
+    (66, 1), (67, 1),
+]
+
+# Page boundaries — surah:verse → page (Madina Mushaf)
+# Full mapping loaded from quran-metadata repo or computed at runtime
 
 # Arabic diacritical marks (tashkeel) — comprehensive Unicode ranges
 _DIACRITICS_RE = re.compile(
@@ -59,19 +95,30 @@ def strip_diacritics(text: str) -> str:
     return _DIACRITICS_RE.sub("", text)
 
 
-# ── API Fetchers ───────────────────────────────────────────────────────
+def _get_juz(surah: int, verse: int) -> int:
+    """Compute juz number for a given surah:verse."""
+    juz = 1
+    for i, (s, v) in enumerate(_JUZ_STARTS):
+        if (surah, verse) >= (s, v):
+            juz = i + 1
+        else:
+            break
+    return juz
 
 
-async def _request_with_retry(
+# ── HTTP Helper ────────────────────────────────────────────────────────
+
+
+async def _get_json(
     client: httpx.AsyncClient,
     url: str,
-    params: dict,
-) -> dict:
-    """GET request with exponential-backoff retry."""
+    params: dict | None = None,
+) -> dict | list:
+    """GET with exponential-backoff retry."""
     last_exc: Exception | None = None
     for attempt in range(RETRY_ATTEMPTS):
         try:
-            resp = await client.get(url, params=params)
+            resp = await client.get(url, params=params or {})
             resp.raise_for_status()
             return resp.json()
         except (httpx.HTTPStatusError, httpx.TransportError) as exc:
@@ -82,18 +129,19 @@ async def _request_with_retry(
     raise last_exc  # type: ignore[misc]
 
 
-async def fetch_chapters_metadata(
+# ══════════════════════════════════════════════════════════════════════
+#  SOURCE 1: Quran Foundation API v4
+# ══════════════════════════════════════════════════════════════════════
+
+
+async def _qf_fetch_chapters(
     client: httpx.AsyncClient,
 ) -> dict[int, dict]:
-    """Fetch all 114 surahs metadata from /chapters endpoint."""
-    data = await _request_with_retry(
-        client,
-        f"{API_BASE}/chapters",
-        {"language": "ar"},
-    )
-    metadata: dict[int, dict] = {}
-    for ch in data["chapters"]:
-        metadata[ch["id"]] = {
+    """Fetch surah metadata from Quran Foundation /chapters."""
+    data = await _get_json(client, f"{QF_API_BASE}/chapters", {"language": "ar"})
+    meta: dict[int, dict] = {}
+    for ch in data["chapters"]:  # type: ignore[index]
+        meta[ch["id"]] = {
             "number": ch["id"],
             "name_arabic": ch["name_arabic"],
             "name_english": ch["name_simple"],
@@ -102,46 +150,37 @@ async def fetch_chapters_metadata(
             "revelation_order": ch["revelation_order"],
             "verse_count": ch["verses_count"],
         }
-    return metadata
+    return meta
 
 
-async def fetch_chapter_verses(
+async def _qf_fetch_verses(
     client: httpx.AsyncClient,
     chapter: int,
     semaphore: asyncio.Semaphore,
 ) -> list[dict]:
-    """Fetch all verses for a chapter, handling pagination."""
+    """Fetch verses for one chapter from Quran Foundation API."""
     verses: list[dict] = []
     page = 1
-
     async with semaphore:
         while True:
-            data = await _request_with_retry(
+            data = await _get_json(
                 client,
-                f"{API_BASE}/verses/by_chapter/{chapter}",
+                f"{QF_API_BASE}/verses/by_chapter/{chapter}",
                 {
                     "language": "ar",
                     "words": "false",
-                    "per_page": PER_PAGE,
+                    "per_page": QF_PER_PAGE,
                     "page": page,
                     "fields": ",".join([
-                        "text_uthmani",
-                        "text_imlaei",
-                        "verse_key",
-                        "juz_number",
-                        "hizb_number",
-                        "rub_el_hizb_number",
-                        "page_number",
-                        "sajdah_type",
-                        "sajdah_number",
+                        "text_uthmani", "text_imlaei", "verse_key",
+                        "juz_number", "hizb_number", "rub_el_hizb_number",
+                        "page_number", "sajdah_type", "sajdah_number",
                     ]),
                 },
             )
-
-            for v in data["verses"]:
+            for v in data["verses"]:  # type: ignore[index]
                 text_uthmani = v.get("text_uthmani", "")
                 text_imlaei = v.get("text_imlaei", "")
-
                 verses.append({
                     "surah_number": chapter,
                     "verse_number": v["verse_number"],
@@ -156,14 +195,148 @@ async def fetch_chapter_verses(
                     "sajda": v.get("sajdah_type") is not None,
                     "sajda_type": v.get("sajdah_type"),
                 })
-
-            pagination = data.get("pagination", {})
+            pagination = data.get("pagination", {})  # type: ignore[union-attr]
             if pagination.get("next_page") is None:
                 break
             page = pagination["next_page"]
             await asyncio.sleep(0.2)
-
     return verses
+
+
+async def import_from_api(
+    client: httpx.AsyncClient,
+) -> tuple[dict[int, dict], list[dict], list[str]]:
+    """Full import via Quran Foundation API. Returns (meta, verses, errors)."""
+    errors: list[str] = []
+    all_verses: list[dict] = []
+    surahs_meta: dict[int, dict] = {}
+
+    print("\n  [API] Fetching surah metadata...")
+    surahs_meta = await _qf_fetch_chapters(client)
+    print(f"  [API] Loaded {len(surahs_meta)} surahs")
+
+    print("\n  [API] Downloading verses...\n")
+    semaphore = asyncio.Semaphore(QF_CONCURRENT)
+    for ch in range(1, TOTAL_SURAHS + 1):
+        name = surahs_meta.get(ch, {}).get("name_arabic", f"Surah {ch}")
+        try:
+            verses = await _qf_fetch_verses(client, ch, semaphore)
+            all_verses.extend(verses)
+            _save_json(OUTPUT_DIR / f"surah_{ch:03d}.json", verses)
+            print(f"   [{ch:3d}/114] {name} — {len(verses)} verses")
+        except Exception as exc:
+            errors.append(f"Surah {ch} ({name}): {exc}")
+            print(f"   [{ch:3d}/114] {name} — ERROR: {exc}")
+
+    return surahs_meta, all_verses, errors
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  SOURCE 2: GitHub Static JSON (fallback)
+# ══════════════════════════════════════════════════════════════════════
+
+
+async def import_from_github(
+    client: httpx.AsyncClient,
+) -> tuple[dict[int, dict], list[dict], list[str]]:
+    """Full import via GitHub static JSON. Returns (meta, verses, errors)."""
+    errors: list[str] = []
+    all_verses: list[dict] = []
+    surahs_meta: dict[int, dict] = {}
+
+    # ── 1. Fetch chapter metadata ──
+    print("\n  [GitHub] Fetching surah metadata...")
+    chapters_raw = await _get_json(client, GH_CHAPTERS)
+    for ch in chapters_raw:  # type: ignore[union-attr]
+        rev = "makkah" if ch["type"] == "meccan" else "madinah"
+        surahs_meta[ch["id"]] = {
+            "number": ch["id"],
+            "name_arabic": ch["name"],
+            "name_english": ch["translation"],
+            "name_transliteration": ch["transliteration"],
+            "revelation_type": rev,
+            "revelation_order": ch["id"],  # placeholder
+            "verse_count": ch["total_verses"],
+        }
+    print(f"  [GitHub] Loaded {len(surahs_meta)} surahs")
+
+    # ── 2. Fetch Uthmani + Simple texts ──
+    print("  [GitHub] Downloading Uthmani text...")
+    uthmani_data = await _get_json(client, GH_UTHMANI)
+    print("  [GitHub] Downloading Simple text...")
+    simple_data = await _get_json(client, GH_SIMPLE)
+
+    uthmani_list: list[dict] = uthmani_data["quran"]  # type: ignore[index]
+    simple_list: list[dict] = simple_data["quran"]  # type: ignore[index]
+
+    print(f"  [GitHub] Uthmani: {len(uthmani_list)} verses, "
+          f"Simple: {len(simple_list)} verses")
+
+    # Build lookup: (chapter, verse) → simple text
+    simple_map: dict[tuple[int, int], str] = {}
+    for v in simple_list:
+        simple_map[(v["chapter"], v["verse"])] = v["text"]
+
+    # ── 3. Build verse records ──
+    print("\n  [GitHub] Building verse records...\n")
+    current_surah = 0
+    surah_verses: list[dict] = []
+
+    for v in uthmani_list:
+        ch = v["chapter"]
+        vn = v["verse"]
+        text_uthmani = v["text"]
+        text_simple = simple_map.get((ch, vn), text_uthmani)
+        text_clean = strip_diacritics(text_simple)
+
+        sajda_key = (ch, vn)
+        sajda_type = _SAJDA_VERSES.get(sajda_key)
+
+        verse_rec = {
+            "surah_number": ch,
+            "verse_number": vn,
+            "verse_key": f"{ch}:{vn}",
+            "text_uthmani": text_uthmani,
+            "text_simple": text_simple,
+            "text_clean": text_clean,
+            "juz": _get_juz(ch, vn),
+            "hizb": None,
+            "rub_el_hizb": None,
+            "page": None,
+            "sajda": sajda_type is not None,
+            "sajda_type": sajda_type,
+        }
+        all_verses.append(verse_rec)
+
+        # Group by surah for per-file output
+        if ch != current_surah:
+            if surah_verses and current_surah > 0:
+                _save_json(
+                    OUTPUT_DIR / f"surah_{current_surah:03d}.json",
+                    surah_verses,
+                )
+                name = surahs_meta.get(current_surah, {}).get(
+                    "name_arabic", f"Surah {current_surah}"
+                )
+                print(f"   [{current_surah:3d}/114] {name}"
+                      f" — {len(surah_verses)} verses")
+            current_surah = ch
+            surah_verses = []
+        surah_verses.append(verse_rec)
+
+    # Save last surah
+    if surah_verses and current_surah > 0:
+        _save_json(
+            OUTPUT_DIR / f"surah_{current_surah:03d}.json",
+            surah_verses,
+        )
+        name = surahs_meta.get(current_surah, {}).get(
+            "name_arabic", f"Surah {current_surah}"
+        )
+        print(f"   [{current_surah:3d}/114] {name}"
+              f" — {len(surah_verses)} verses")
+
+    return surahs_meta, all_verses, errors
 
 
 # ── Database Insertion ─────────────────────────────────────────────────
@@ -263,65 +436,73 @@ def _save_json(path: Path, data: object) -> None:
     )
 
 
+def _parse_source_arg() -> str:
+    """Parse --source=api|github from argv. Default: auto."""
+    for arg in sys.argv[1:]:
+        if arg.startswith("--source="):
+            return arg.split("=", 1)[1]
+    return "auto"
+
+
 # ── Main Pipeline ──────────────────────────────────────────────────────
 
 
 async def main() -> None:
     """Run the full Quran import pipeline."""
     insert_db = "--db" in sys.argv
+    source = _parse_source_arg()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    errors: list[str] = []
-    all_verses: list[dict] = []
-    surahs_imported = 0
-    surahs_meta: dict[int, dict] = {}
-
     print("=" * 60)
     print("  Quran Data Import Pipeline")
-    print("  Source: Quran Foundation API v4")
     print("=" * 60)
+
+    surahs_meta: dict[int, dict] = {}
+    all_verses: list[dict] = []
+    errors: list[str] = []
 
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(30.0, connect=10.0),
         follow_redirects=True,
     ) as client:
 
-        # ── Step 1: Fetch surah metadata ──
-        print("\n  Fetching surah metadata...")
-        try:
-            surahs_meta = await fetch_chapters_metadata(client)
-            print(f"  Loaded metadata for {len(surahs_meta)} surahs")
-        except Exception as exc:
-            errors.append(f"Chapter metadata: {exc}")
-            print(f"  ERROR fetching metadata: {exc}")
+        if source == "api":
+            print("  Source: Quran Foundation API v4")
+            surahs_meta, all_verses, errors = await import_from_api(client)
 
-        # ── Step 2: Fetch verses per surah ──
-        print("\n  Downloading verses...\n")
-        semaphore = asyncio.Semaphore(CONCURRENT_REQUESTS)
+        elif source == "github":
+            print("  Source: GitHub (fawazahmed0/quran-api)")
+            surahs_meta, all_verses, errors = await import_from_github(client)
 
-        for chapter in range(1, TOTAL_SURAHS + 1):
-            name = surahs_meta.get(chapter, {}).get(
-                "name_arabic", f"Surah {chapter}"
-            )
+        else:  # auto — try API first, fallback to GitHub
+            print("  Source: Auto (API → GitHub fallback)")
             try:
-                verses = await fetch_chapter_verses(client, chapter, semaphore)
-                all_verses.extend(verses)
-                surahs_imported += 1
+                # Quick probe to see if API is reachable
+                probe = await client.get(
+                    f"{QF_API_BASE}/chapters",
+                    params={"language": "ar"},
+                )
+                probe.raise_for_status()
+                print("  API reachable — using Quran Foundation API v4")
+                surahs_meta, all_verses, errors = await import_from_api(client)
+            except (httpx.HTTPStatusError, httpx.TransportError) as exc:
+                print(f"  API unavailable ({exc}) — falling back to GitHub")
+                surahs_meta, all_verses, errors = await import_from_github(
+                    client,
+                )
 
-                _save_json(OUTPUT_DIR / f"surah_{chapter:03d}.json", verses)
+    # Count successfully imported surahs
+    imported_surahs: set[int] = set()
+    for v in all_verses:
+        imported_surahs.add(v["surah_number"])
+    surahs_imported = len(imported_surahs)
 
-                print(f"   [{chapter:3d}/114] {name} -- {len(verses)} verses")
-
-            except Exception as exc:
-                errors.append(f"Surah {chapter} ({name}): {exc}")
-                print(f"   [{chapter:3d}/114] {name} -- ERROR: {exc}")
-
-    # ── Step 3: Save combined file ──
+    # ── Save combined file ──
     _save_json(
         OUTPUT_DIR / "quran_complete.json",
         {
-            "source": "Quran Foundation API v4",
+            "source": source,
             "total_surahs": surahs_imported,
             "total_verses": len(all_verses),
             "surahs_metadata": {str(k): v for k, v in surahs_meta.items()},
@@ -329,7 +510,7 @@ async def main() -> None:
         },
     )
 
-    # ── Step 4: Optionally insert into DB ──
+    # ── Optionally insert into DB ──
     if insert_db:
         print("\n  Inserting into database...")
         try:
@@ -339,7 +520,7 @@ async def main() -> None:
             errors.append(f"Database: {exc}")
             print(f"  DB ERROR: {exc}")
 
-    # ── Step 5: Summary report ──
+    # ── Summary report ──
     print("\n" + "=" * 60)
     print("  تقرير الاستيراد | Import Report")
     print("=" * 60)

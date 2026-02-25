@@ -17,26 +17,42 @@ from discovery_engine.core.graph import build_discovery_graph
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ── Startup ─────────────────────────────────────────────
     settings = get_settings()
+    db: DatabaseService | None = None
+    embeddings: EmbeddingsService | None = None
 
-    # Database service
-    db = DatabaseService(settings.database_url)
-    await db.connect()
-    app.state.db = db
+    try:
+        db = DatabaseService(settings.database_url)
+        await db.connect()
+        app.state.db = db
+        print("✅ Database connected")
+    except Exception as exc:
+        print(f"⚠️ Database unavailable — running in degraded mode: {exc}")
+        app.state.db = None
 
-    # Embeddings service
-    embeddings = EmbeddingsService()
-    await embeddings.initialize(settings.database_url)
-    app.state.embeddings = embeddings
+    try:
+        if db is not None:
+            embeddings = EmbeddingsService()
+            await embeddings.initialize(settings.database_url)
+            app.state.embeddings = embeddings
+            print("✅ Embeddings loaded")
+        else:
+            app.state.embeddings = None
+            print("⚠️ Embeddings skipped — no database")
+    except Exception as exc:
+        print(f"⚠️ Embeddings unavailable: {exc}")
+        app.state.embeddings = None
 
-    # Build LangGraph with injected services
-    app.state.graph = build_discovery_graph(db=db, embeddings=embeddings)
-
-    print("✅ المحرك جاهز — DB + Embeddings متصلان")
+    # Build LangGraph — works with or without services
+    app.state.graph = build_discovery_graph(
+        db=app.state.db, embeddings=app.state.embeddings
+    )
+    print("✅ المحرك جاهز — LangGraph initialized")
 
     yield
 
     # ── Shutdown ─────────────────────────────────────────────
-    await db.close()
+    if db is not None:
+        await db.close()
 
 
 app = FastAPI(

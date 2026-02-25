@@ -26,8 +26,10 @@ redis==5.2.0
 celery==5.4.0
 apscheduler==3.10.4
 
-# === Embeddings ===
+# === Embeddings & NLP ===
 openai==1.55.0
+numpy>=1.26.0
+scikit-learn>=1.4.0
 
 # === SSE Streaming ===
 sse-starlette==2.1.0

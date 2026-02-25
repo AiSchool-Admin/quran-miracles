@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import anthropic
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,6 +11,7 @@ from api.deps import get_settings
 from api.routes import discovery, prediction, quran
 from arabic_nlp.embeddings_service import EmbeddingsService
 from database.service import DatabaseService
+from discovery_engine.autonomous.scheduler import AutonomousDiscoveryScheduler
 from discovery_engine.core.graph import build_discovery_graph
 
 
@@ -48,9 +50,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     print("✅ المحرك جاهز — LangGraph initialized")
 
+    # Anthropic LLM client for prediction engine
+    try:
+        app.state.llm = anthropic.AsyncAnthropic(
+            api_key=settings.anthropic_api_key or None
+        )
+        print("✅ Anthropic client initialized")
+    except Exception as exc:
+        print(f"⚠️ Anthropic client unavailable: {exc}")
+        app.state.llm = None
+
+    # Autonomous discovery scheduler (MCTS background jobs)
+    try:
+        scheduler = AutonomousDiscoveryScheduler(
+            engine=app.state.graph,
+            db=app.state.db,
+        )
+        scheduler.start()
+        app.state.scheduler = scheduler
+    except Exception as exc:
+        print(f"⚠️ Autonomous scheduler unavailable: {exc}")
+        app.state.scheduler = None
+
     yield
 
     # ── Shutdown ─────────────────────────────────────────────
+    if hasattr(app.state, "scheduler") and app.state.scheduler:
+        app.state.scheduler.scheduler.shutdown(wait=False)
     if db is not None:
         await db.close()
 

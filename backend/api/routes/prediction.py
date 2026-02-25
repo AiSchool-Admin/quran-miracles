@@ -1,29 +1,81 @@
-"""Predictive engine API routes."""
+"""Predictive engine API routes — توليد الفرضيات واستكشاف MCTS."""
 
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+
+from discovery_engine.mcts.hypothesis_explorer import MCTSHypothesisExplorer
+from discovery_engine.prediction.abductive_engine import AbductiveReasoningEngine
+from discovery_engine.prediction.research_navigator import ResearchNavigator
+from discovery_engine.prediction.statistical_safeguards import StatisticalSafeguards
 
 router = APIRouter()
 
 
-class PredictionRequest(BaseModel):
-    topic: str
-    context: str | None = None
+@router.post("/generate")
+async def generate_predictions(request: Request, body: dict):
+    """توليد فرضيات بحثية من آيات قرآنية.
+
+    Input:  { verses: [...], discipline: "physics" }
+    Output: { predictions: [...], research_maps: [...] }
+    """
+    verses = body.get("verses", [])
+    discipline = body.get("discipline", "physics")
+
+    # تهيئة المحركات
+    validator = StatisticalSafeguards()
+    engine = AbductiveReasoningEngine(
+        request.app.state.llm, validator
+    )
+    navigator = ResearchNavigator()
+
+    # توليد الفرضيات
+    predictions = await engine.generate_predictions(
+        verses, discipline, max_hypotheses=5
+    )
+
+    # توليد خرائط البحث
+    research_maps = [
+        await navigator.generate_research_map(p) for p in predictions
+    ]
+
+    return JSONResponse(
+        {
+            "predictions": [p.model_dump() for p in predictions],
+            "research_maps": research_maps,
+            "total": len(predictions),
+            "disclaimer": (
+                "هذه فرضيات آلية — لم تُراجَع بشرياً بعد. "
+                "كل فرضية تحمل مستواها الإحصائي وخارطة التحقق منها."
+            ),
+        }
+    )
 
 
-@router.post("/hypotheses")
-async def generate_hypotheses(request: PredictionRequest) -> dict:
-    """Generate testable hypotheses using AbductiveReasoningEngine."""
-    return {"hypotheses": []}
+@router.post("/mcts/explore")
+async def mcts_explore(request: Request, body: dict):
+    """استكشاف MCTS على موضوع محدد.
 
+    Input:  { topic: "...", discipline: "..." }
+    Output: { best_hypotheses: [...] }
+    """
+    topic = body.get("topic", "")
+    discipline = body.get("discipline", "physics")
 
-@router.get("/research-map/{hypothesis_id}")
-async def get_research_map(hypothesis_id: str) -> dict:
-    """Get research navigation map for a hypothesis."""
-    return {"hypothesis_id": hypothesis_id, "steps": []}
+    explorer = MCTSHypothesisExplorer(
+        request.app.state.llm,
+        request.app.state.db,
+        StatisticalSafeguards(),
+    )
 
+    best = await explorer.run_exploration(
+        topic, discipline, n_iterations=20
+    )
 
-@router.get("/weekly-report")
-async def get_weekly_report() -> dict:
-    """Get the latest weekly discoveries report."""
-    return {"report": None}
+    return JSONResponse(
+        {
+            "best_hypotheses": best,
+            "topic": topic,
+            "discipline": discipline,
+            "iterations": 20,
+        }
+    )

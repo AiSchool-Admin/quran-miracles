@@ -25,12 +25,16 @@ class DiscoveryState(TypedDict, total=False):
     tafseer_findings: dict
     humanities_findings: list[dict]
 
+    # ── Tafseer context (from quran_rag → downstream agents) ─
+    tafseer_context: str | dict
+
     # ── Synthesis ──────────────────────────────────────────
     synthesis: str
     quality_score: float
     quality_issues: list[str]
     confidence_tier: str
     predictions: list[dict]
+    discovery_id: str | None
 
     # ── Control flow ───────────────────────────────────────
     should_deepen: bool

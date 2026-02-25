@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from discovery_engine.core.state import DiscoveryState
 from discovery_engine.prompts.system_prompts import SYNTHESIS_SYSTEM_PROMPT
 
@@ -23,9 +26,12 @@ class SynthesisAgent:
     Uses higher temperature (0.6) for richer synthesis.
     """
 
+    def __init__(self, db: Any = None):
+        self.db = db
+
     async def synthesize(
         self, all_findings: dict, state: DiscoveryState
-    ) -> str:
+    ) -> dict:
         """Synthesize findings from all agents.
 
         Args:
@@ -50,11 +56,59 @@ class SynthesisAgent:
                 system=SYNTHESIS_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
             )
-            result: str = resp.content[0].text
-            return result
+            synthesis_text: str = resp.content[0].text
         except Exception:
-            # MOCK: API not available
-            return self._mock_synthesis(all_findings, state)
+            synthesis_text = self._mock_synthesis(all_findings, state)
+
+        # Extract confidence tier
+        tier = "tier_2"
+        for t in ("tier_1", "tier_3"):
+            if t in synthesis_text:
+                tier = t
+                break
+
+        result: dict[str, Any] = {
+            "synthesis": synthesis_text,
+            "confidence_tier": tier,
+        }
+
+        # Save discovery to DB
+        if self.db is not None:
+            try:
+                verses = all_findings.get("verses", [])
+                verse_ids = [v["id"] for v in verses if v.get("id")]
+                science = all_findings.get("science_findings", [])
+                humanities = all_findings.get("humanities_findings", [])
+
+                # Determine discipline from findings
+                disciplines = set()
+                for f in science:
+                    disciplines.add(f.get("discipline", "science"))
+                for f in humanities:
+                    disciplines.add(f.get("discipline", "humanities"))
+
+                discovery_id = await self.db.save_discovery({
+                    "title_ar": state.get("query", "اكتشاف جديد"),
+                    "description_ar": synthesis_text[:2000],
+                    "category": "scientific" if science else "humanities",
+                    "discipline": ", ".join(disciplines) if disciplines else None,
+                    "verse_ids": verse_ids or None,
+                    "confidence_tier": tier,
+                    "confidence_score": None,
+                    "evidence": json.dumps(
+                        {"science_count": len(science), "humanities_count": len(humanities)},
+                        ensure_ascii=False,
+                    ),
+                    "counter_arguments": json.dumps(
+                        [f.get("main_objection", "") for f in science if f.get("main_objection")],
+                        ensure_ascii=False,
+                    ),
+                })
+                result["discovery_id"] = discovery_id
+            except Exception as exc:
+                print(f"⚠️ Failed to save discovery: {exc}")
+
+        return result
 
     async def synthesize_stream(
         self, all_findings: dict, state: DiscoveryState

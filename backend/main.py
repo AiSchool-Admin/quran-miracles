@@ -6,20 +6,43 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.deps import get_settings
 from api.routes import discovery, prediction, quran
+from arabic_nlp.embeddings_service import EmbeddingsService
+from database.service import DatabaseService
+from discovery_engine.core.graph import build_discovery_graph
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # Startup
+    # ── Startup ─────────────────────────────────────────────
+    settings = get_settings()
+
+    # Database service
+    db = DatabaseService(settings.database_url)
+    await db.connect()
+    app.state.db = db
+
+    # Embeddings service
+    embeddings = EmbeddingsService()
+    await embeddings.initialize(settings.database_url)
+    app.state.embeddings = embeddings
+
+    # Build LangGraph with injected services
+    app.state.graph = build_discovery_graph(db=db, embeddings=embeddings)
+
+    print("✅ المحرك جاهز — DB + Embeddings متصلان")
+
     yield
-    # Shutdown
+
+    # ── Shutdown ─────────────────────────────────────────────
+    await db.close()
 
 
 app = FastAPI(
     title="معجزات القرآن الكريم API",
     description="AI Discovery Platform for Quranic Miracles",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 

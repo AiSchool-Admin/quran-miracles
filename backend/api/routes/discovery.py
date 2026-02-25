@@ -7,7 +7,7 @@ import json
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -36,48 +36,43 @@ class DiscoveryResponse(BaseModel):
     verses_count: int
     science_findings_count: int
     humanities_findings_count: int
+    discovery_id: str | None = None
+
+
+def _get_graph(request: Request):
+    """Get the pre-built graph from app state, or build a fresh one."""
+    if hasattr(request.app.state, "graph") and request.app.state.graph is not None:
+        return request.app.state.graph
+    # Fallback: build without services (legacy behaviour)
+    return build_discovery_graph()
 
 
 @router.post("/stream")
-async def stream_discovery(request: DiscoveryRequest) -> StreamingResponse:
-    """Launch a discovery exploration and stream results via SSE.
-
-    SSE stages:
-      1. route_query    — query routed
-      2. quran_rag      — verses retrieved
-      3. linguistic     — morphological analysis done
-      4. science        — scientific correlations found
-      5. tafseer        — tafseer comparison done
-      6. humanities     — humanities connections found
-      7. synthesis      — synthesis generated
-      8. quality_review — quality reviewed
-      9. complete       — final results
-    """
+async def stream_discovery(
+    body: DiscoveryRequest, request: Request
+) -> StreamingResponse:
+    """Launch a discovery exploration and stream results via SSE."""
     session_id = str(uuid.uuid4())
 
     initial_state: DiscoveryState = {
-        "query": request.query,
-        "disciplines": request.disciplines,
-        "mode": request.mode,
+        "query": body.query,
+        "disciplines": body.disciplines,
+        "mode": body.mode,
         "iteration_count": 0,
         "streaming_updates": [],
     }
 
     async def event_generator():
-        # Send session start
         yield _sse_event("session_start", {"session_id": session_id})
 
         try:
-            graph = build_discovery_graph()
+            graph = _get_graph(request)
             config = {"configurable": {"thread_id": session_id}}
 
-            # Track which stages we've sent
             sent_stages: set[str] = set()
 
-            # Run graph with streaming if available
             if hasattr(graph, "astream"):
                 async for chunk in graph.astream(initial_state, config=config):
-                    # Each chunk is a dict of node_name → partial state
                     for _node_name, node_state in chunk.items():
                         updates = node_state.get("streaming_updates", [])
                         for update in updates:
@@ -87,7 +82,6 @@ async def stream_discovery(request: DiscoveryRequest) -> StreamingResponse:
                                 yield _sse_event(stage, update)
                                 await asyncio.sleep(0.01)
 
-                # Get final state
                 final_state = await graph.aget_state(config)
                 state_values = (
                     final_state.values
@@ -95,16 +89,13 @@ async def stream_discovery(request: DiscoveryRequest) -> StreamingResponse:
                     else final_state
                 )
             else:
-                # Fallback: run ainvoke and send updates from result
                 state_values = await graph.ainvoke(initial_state, config=config)
-
                 for update in state_values.get("streaming_updates", []):
                     stage = update.get("stage", "")
                     if stage:
                         yield _sse_event(stage, update)
                         await asyncio.sleep(0.01)
 
-            # Send final result
             yield _sse_event(
                 "complete",
                 {
@@ -120,6 +111,7 @@ async def stream_discovery(request: DiscoveryRequest) -> StreamingResponse:
                     "humanities_findings_count": len(
                         state_values.get("humanities_findings", [])
                     ),
+                    "discovery_id": state_values.get("discovery_id"),
                 },
             )
 
@@ -138,19 +130,19 @@ async def stream_discovery(request: DiscoveryRequest) -> StreamingResponse:
 
 
 @router.post("/explore")
-async def explore(request: DiscoveryRequest) -> DiscoveryResponse:
+async def explore(body: DiscoveryRequest, request: Request) -> DiscoveryResponse:
     """Non-streaming discovery exploration (returns full result)."""
     session_id = str(uuid.uuid4())
 
     initial_state: DiscoveryState = {
-        "query": request.query,
-        "disciplines": request.disciplines,
-        "mode": request.mode,
+        "query": body.query,
+        "disciplines": body.disciplines,
+        "mode": body.mode,
         "iteration_count": 0,
         "streaming_updates": [],
     }
 
-    graph = build_discovery_graph()
+    graph = _get_graph(request)
     config = {"configurable": {"thread_id": session_id}}
     result = await graph.ainvoke(initial_state, config=config)
 
@@ -163,17 +155,24 @@ async def explore(request: DiscoveryRequest) -> DiscoveryResponse:
         verses_count=len(result.get("verses", [])),
         science_findings_count=len(result.get("science_findings", [])),
         humanities_findings_count=len(result.get("humanities_findings", [])),
+        discovery_id=result.get("discovery_id"),
     )
 
 
 @router.get("/discoveries")
-async def list_discoveries(tier: str | None = None) -> dict:
+async def list_discoveries(request: Request, tier: str | None = None) -> dict:
     """List verified discoveries, optionally filtered by tier."""
-    # TODO: query from database
+    if hasattr(request.app.state, "db") and request.app.state.db is not None:
+        discoveries = await request.app.state.db.list_discoveries(tier=tier)
+        # Convert UUIDs to strings for JSON serialization
+        for d in discoveries:
+            for k, v in d.items():
+                if hasattr(v, "hex"):
+                    d[k] = str(v)
+        return {"discoveries": discoveries, "filter": tier}
     return {"discoveries": [], "filter": tier}
 
 
 def _sse_event(event: str, data: dict) -> str:
-    """Format a Server-Sent Event."""
-    json_data = json.dumps(data, ensure_ascii=False)
+    json_data = json.dumps(data, ensure_ascii=False, default=str)
     return f"event: {event}\ndata: {json_data}\n\n"

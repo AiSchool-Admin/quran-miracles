@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from discovery_engine.core.state import DiscoveryState
 from discovery_engine.prompts.system_prompts import QURAN_SCHOLAR_SYSTEM_PROMPT
@@ -26,6 +27,9 @@ class TafseerAgent:
     ★ Al-Shaarawy is highlighted for precise linguistic analysis.
     """
 
+    def __init__(self, db: Any = None):
+        self.db = db
+
     async def analyze(
         self, verses: list[dict], state: DiscoveryState
     ) -> dict:
@@ -43,8 +47,24 @@ class TafseerAgent:
                 "tafseer_details": [],
             }
 
-        # If verses already have tafseers from DB, use them directly
+        # If verses already have tafseers from QuranRAG, use them
         has_tafseers = any(v.get("tafseers") for v in verses)
+
+        # If not, try fetching from DB via service
+        if not has_tafseers and self.db is not None:
+            try:
+                verse_ids = [v["id"] for v in verses if v.get("id")]
+                if verse_ids:
+                    all_tafseers = await self.db.get_tafseers_for_verses(verse_ids)
+                    by_verse: dict[int, list[dict]] = {}
+                    for t in all_tafseers:
+                        by_verse.setdefault(t["verse_id"], []).append(t)
+                    for v in verses:
+                        v["tafseers"] = by_verse.get(v.get("id", 0), [])
+                    has_tafseers = any(v.get("tafseers") for v in verses)
+            except Exception as exc:
+                print(f"⚠️ TafseerAgent DB fetch failed: {exc}")
+
         if has_tafseers:
             return self._analyze_from_db(verses)
 

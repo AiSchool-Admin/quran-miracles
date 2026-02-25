@@ -7,7 +7,10 @@ Flow:
                                            ↓
                                         synthesis → quality_review
                                            ↓
-                            [Conditional: deepen_search or kg_update]
+                            [Conditional: deepen or kg_update → END]
+
+Services (DatabaseService, EmbeddingsService) are injected via
+build_discovery_graph() and captured in closures.
 """
 
 from __future__ import annotations
@@ -29,161 +32,179 @@ from discovery_engine.core.state import DiscoveryState
 _MAX_ITERATIONS = 3
 
 
-# ── Node functions ─────────────────────────────────────────
+# ── Node factory ──────────────────────────────────────────────
 
 
-async def route_query(state: DiscoveryState) -> DiscoveryState:
-    """Route incoming query — classify type and set defaults."""
-    updates: DiscoveryState = {}
-    if not state.get("disciplines"):
-        updates["disciplines"] = ["physics", "biology", "psychology"]
-    if not state.get("mode"):
-        updates["mode"] = "guided"
-    if not state.get("iteration_count"):
-        updates["iteration_count"] = 0
+def _make_nodes(db: Any = None, embeddings: Any = None) -> dict:
+    """Create node functions with injected services.
 
-    # Classify query type using the router agent
-    router = RouteQueryAgent()
-    effective_state = {**state, **updates}
-    route = router.route(effective_state)
+    Returns a dict of {name: async_function} for each graph node.
+    """
 
-    updates["streaming_updates"] = state.get("streaming_updates", []) + [
-        {"stage": "route_query", "status": "done", "route": route}
-    ]
-    return updates
+    async def route_query(state: DiscoveryState) -> DiscoveryState:
+        updates: DiscoveryState = {}
+        if not state.get("disciplines"):
+            updates["disciplines"] = ["physics", "biology", "psychology"]
+        if not state.get("mode"):
+            updates["mode"] = "guided"
+        if not state.get("iteration_count"):
+            updates["iteration_count"] = 0
 
+        router = RouteQueryAgent()
+        effective_state = {**state, **updates}
+        route = router.route(effective_state)
 
-async def quran_rag_node(state: DiscoveryState) -> DiscoveryState:
-    """Retrieve Quranic context using RAG."""
-    agent = QuranRAGAgent()
-    result = await agent.search(state.get("query", ""), state)
-    return {
-        "verses": result.get("verses", []),
-        "streaming_updates": state.get("streaming_updates", [])
-        + [{"stage": "quran_rag", "status": "done", "verse_count": len(result.get("verses", []))}],
-    }
+        updates["streaming_updates"] = state.get("streaming_updates", []) + [
+            {"stage": "route_query", "status": "done", "route": route}
+        ]
+        return updates
 
+    async def quran_rag_node(state: DiscoveryState) -> DiscoveryState:
+        agent = QuranRAGAgent(db=db, embeddings=embeddings)
+        result = await agent.search(state.get("query", ""), state)
+        return {
+            "verses": result.get("verses", []),
+            "tafseer_context": result.get("tafseer_context", {}),
+            "streaming_updates": state.get("streaming_updates", [])
+            + [
+                {
+                    "stage": "quran_rag",
+                    "status": "done",
+                    "source": result.get("source", "unknown"),
+                    "verse_count": len(result.get("verses", [])),
+                }
+            ],
+        }
 
-async def linguistic_node(state: DiscoveryState) -> DiscoveryState:
-    """Perform morphological and rhetorical analysis."""
-    agent = LinguisticAnalysisAgent()
-    result = await agent.analyze(state.get("verses", []), state)
-    return {
-        "linguistic_analysis": result,
-        "streaming_updates": state.get("streaming_updates", [])
-        + [{"stage": "linguistic", "status": "done"}],
-    }
+    async def linguistic_node(state: DiscoveryState) -> DiscoveryState:
+        agent = LinguisticAnalysisAgent()
+        result = await agent.analyze(state.get("verses", []), state)
+        return {
+            "linguistic_analysis": result,
+            "streaming_updates": state.get("streaming_updates", [])
+            + [{"stage": "linguistic", "status": "done"}],
+        }
 
+    async def science_node(state: DiscoveryState) -> DiscoveryState:
+        agent = ScientificExplorerAgent()
+        disciplines = state.get("disciplines", ["physics", "biology"])
+        context = {
+            "verses": state.get("verses", []),
+            "tafseer_context": state.get("tafseer_context", ""),
+        }
 
-async def science_node(state: DiscoveryState) -> DiscoveryState:
-    """Find scientific correlations across disciplines."""
-    agent = ScientificExplorerAgent()
-    disciplines = state.get("disciplines", ["physics", "biology"])
-    context = {
-        "verses": state.get("verses", []),
-        "tafseer_context": "",
-    }
+        all_findings: list[dict] = []
+        tasks = [
+            agent.explore(state.get("query", ""), d, context)
+            for d in disciplines
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for r in results:
+            if isinstance(r, list):
+                all_findings.extend(r)
 
-    all_findings: list[dict] = []
-    tasks = [
-        agent.explore(state.get("query", ""), d, context)
-        for d in disciplines
-    ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    for r in results:
-        if isinstance(r, list):
-            all_findings.extend(r)
+        return {
+            "science_findings": all_findings,
+            "streaming_updates": state.get("streaming_updates", [])
+            + [{"stage": "science", "status": "done", "finding_count": len(all_findings)}],
+        }
 
-    return {
-        "science_findings": all_findings,
-        "streaming_updates": state.get("streaming_updates", [])
-        + [{"stage": "science", "status": "done", "finding_count": len(all_findings)}],
-    }
+    async def tafseer_node(state: DiscoveryState) -> DiscoveryState:
+        agent = TafseerAgent(db=db)
+        result = await agent.analyze(state.get("verses", []), state)
+        return {
+            "tafseer_findings": result,
+            "streaming_updates": state.get("streaming_updates", [])
+            + [{"stage": "tafseer", "status": "done"}],
+        }
 
+    async def humanities_node(state: DiscoveryState) -> DiscoveryState:
+        agent = HumanitiesAgent()
+        context = {
+            "verses": state.get("verses", []),
+            "tafseer_context": state.get("tafseer_context", ""),
+        }
+        disciplines = state.get("disciplines", ["psychology", "sociology"])
+        result = await agent.analyze(
+            state.get("verses", []), context, disciplines
+        )
+        return {
+            "humanities_findings": result,
+            "streaming_updates": state.get("streaming_updates", [])
+            + [{"stage": "humanities", "status": "done", "finding_count": len(result)}],
+        }
 
-async def tafseer_node(state: DiscoveryState) -> DiscoveryState:
-    """Gather tafseer insights from 7 references."""
-    agent = TafseerAgent()
-    result = await agent.analyze(state.get("verses", []), state)
-    return {
-        "tafseer_findings": result,
-        "streaming_updates": state.get("streaming_updates", [])
-        + [{"stage": "tafseer", "status": "done"}],
-    }
+    async def synthesis_node(state: DiscoveryState) -> DiscoveryState:
+        agent = SynthesisAgent(db=db)
+        all_findings = {
+            "verses": state.get("verses", []),
+            "linguistic_analysis": state.get("linguistic_analysis", {}),
+            "science_findings": state.get("science_findings", []),
+            "tafseer_findings": state.get("tafseer_findings", {}),
+            "humanities_findings": state.get("humanities_findings", []),
+        }
+        result = await agent.synthesize(all_findings, state)
 
+        # Extract confidence_tier from synthesis text
+        tier = "tier_2"  # default
+        synthesis_text = result.get("synthesis", "") if isinstance(result, dict) else result
+        for t in ("tier_1", "tier_3"):
+            if t in str(synthesis_text):
+                tier = t
+                break
 
-async def humanities_node(state: DiscoveryState) -> DiscoveryState:
-    """Analyze humanities connections."""
-    agent = HumanitiesAgent()
-    context = {
-        "verses": state.get("verses", []),
-        "tafseer_context": "",
-    }
-    disciplines = state.get("disciplines", ["psychology", "sociology"])
-    result = await agent.analyze(
-        state.get("verses", []), context, disciplines
-    )
-    return {
-        "humanities_findings": result,
-        "streaming_updates": state.get("streaming_updates", [])
-        + [{"stage": "humanities", "status": "done", "finding_count": len(result)}],
-    }
-
-
-async def synthesis_node(state: DiscoveryState) -> DiscoveryState:
-    """Synthesize findings from all agents."""
-    agent = SynthesisAgent()
-    all_findings = {
-        "verses": state.get("verses", []),
-        "linguistic_analysis": state.get("linguistic_analysis", {}),
-        "science_findings": state.get("science_findings", []),
-        "tafseer_findings": state.get("tafseer_findings", {}),
-        "humanities_findings": state.get("humanities_findings", []),
-    }
-    result = await agent.synthesize(all_findings, state)
-
-    # Extract confidence_tier from synthesis text
-    tier = "tier_2"  # default
-    for t in ("tier_1", "tier_3"):
-        if t in result:
-            tier = t
-            break
-
-    return {
-        "synthesis": result,
-        "confidence_tier": tier,
-        "streaming_updates": state.get("streaming_updates", [])
-        + [{"stage": "synthesis", "status": "done"}],
-    }
-
-
-async def quality_review_node(state: DiscoveryState) -> DiscoveryState:
-    """Review quality and decide whether to deepen."""
-    agent = QualityReviewAgent()
-    result = await agent.review(state)
-    iteration = state.get("iteration_count", 0) + 1
-    return {
-        "quality_score": result["quality_score"],
-        "quality_issues": result["quality_issues"],
-        "should_deepen": result["should_deepen"] and iteration < _MAX_ITERATIONS,
-        "iteration_count": iteration,
-        "streaming_updates": state.get("streaming_updates", [])
-        + [
-            {
-                "stage": "quality_review",
-                "status": "done",
-                "quality_score": result["quality_score"],
-                "should_deepen": result["should_deepen"],
+        if isinstance(result, dict):
+            return {
+                "synthesis": result.get("synthesis", ""),
+                "confidence_tier": result.get("confidence_tier", tier),
+                "discovery_id": result.get("discovery_id"),
+                "streaming_updates": state.get("streaming_updates", [])
+                + [{"stage": "synthesis", "status": "done"}],
             }
-        ],
-    }
 
+        return {
+            "synthesis": result,
+            "confidence_tier": tier,
+            "streaming_updates": state.get("streaming_updates", [])
+            + [{"stage": "synthesis", "status": "done"}],
+        }
 
-async def kg_update_node(state: DiscoveryState) -> DiscoveryState:
-    """Update knowledge graph (placeholder for Neo4j integration)."""
+    async def quality_review_node(state: DiscoveryState) -> DiscoveryState:
+        agent = QualityReviewAgent()
+        result = await agent.review(state)
+        iteration = state.get("iteration_count", 0) + 1
+        return {
+            "quality_score": result["quality_score"],
+            "quality_issues": result["quality_issues"],
+            "should_deepen": result["should_deepen"] and iteration < _MAX_ITERATIONS,
+            "iteration_count": iteration,
+            "streaming_updates": state.get("streaming_updates", [])
+            + [
+                {
+                    "stage": "quality_review",
+                    "status": "done",
+                    "quality_score": result["quality_score"],
+                    "should_deepen": result["should_deepen"],
+                }
+            ],
+        }
+
+    async def kg_update_node(state: DiscoveryState) -> DiscoveryState:
+        return {
+            "streaming_updates": state.get("streaming_updates", [])
+            + [{"stage": "kg_update", "status": "done"}],
+        }
+
     return {
-        "streaming_updates": state.get("streaming_updates", [])
-        + [{"stage": "kg_update", "status": "done"}],
+        "route_query": route_query,
+        "quran_rag": quran_rag_node,
+        "linguistic": linguistic_node,
+        "science": science_node,
+        "tafseer": tafseer_node,
+        "humanities": humanities_node,
+        "synthesis": synthesis_node,
+        "quality_review": quality_review_node,
+        "kg_update": kg_update_node,
     }
 
 
@@ -197,52 +218,45 @@ def should_deepen(state: DiscoveryState) -> str:
 # ── Graph builder ──────────────────────────────────────────
 
 
-def build_discovery_graph():
+def build_discovery_graph(db: Any = None, embeddings: Any = None):
     """Build and compile the LangGraph StateGraph.
+
+    Args:
+        db: optional DatabaseService instance (shared pool).
+        embeddings: optional EmbeddingsService instance.
 
     Returns a compiled graph with MemorySaver checkpointer.
     """
+    nodes = _make_nodes(db=db, embeddings=embeddings)
+
     try:
         from langgraph.checkpoint.memory import MemorySaver
         from langgraph.graph import END, StateGraph
     except ImportError:
-        # LangGraph not installed — return a simple callable wrapper
-        return _FallbackGraph()
+        return _FallbackGraph(nodes)
 
     graph = StateGraph(DiscoveryState)
 
-    # Add nodes
-    graph.add_node("route_query", route_query)
-    graph.add_node("quran_rag", quran_rag_node)
-    graph.add_node("linguistic", linguistic_node)
-    graph.add_node("science", science_node)
-    graph.add_node("tafseer", tafseer_node)
-    graph.add_node("humanities", humanities_node)
-    graph.add_node("synthesis", synthesis_node)
-    graph.add_node("quality_review", quality_review_node)
-    graph.add_node("kg_update", kg_update_node)
+    for name, fn in nodes.items():
+        graph.add_node(name, fn)
 
-    # Set entry point
     graph.set_entry_point("route_query")
 
-    # Sequential edges
     graph.add_edge("route_query", "quran_rag")
     graph.add_edge("quran_rag", "linguistic")
 
-    # Parallel edges: after linguistic → science, tafseer, humanities
+    # Parallel: linguistic → science, tafseer, humanities
     graph.add_edge("linguistic", "science")
     graph.add_edge("linguistic", "tafseer")
     graph.add_edge("linguistic", "humanities")
 
-    # All three converge to synthesis
+    # Converge to synthesis
     graph.add_edge("science", "synthesis")
     graph.add_edge("tafseer", "synthesis")
     graph.add_edge("humanities", "synthesis")
 
-    # synthesis → quality_review
     graph.add_edge("synthesis", "quality_review")
 
-    # Conditional: quality_review → deepen (back to quran_rag) or complete
     graph.add_conditional_edges(
         "quality_review",
         should_deepen,
@@ -252,38 +266,34 @@ def build_discovery_graph():
         },
     )
 
-    # kg_update → END
     graph.add_edge("kg_update", END)
 
-    # Compile with checkpointer
     checkpointer = MemorySaver()
     return graph.compile(checkpointer=checkpointer)
 
 
 class _FallbackGraph:
-    """Simple fallback when LangGraph is not installed.
+    """Simple fallback when LangGraph is not installed."""
 
-    Runs nodes sequentially to allow testing without langgraph dependency.
-    """
+    def __init__(self, nodes: dict) -> None:
+        self._nodes = nodes
 
     async def ainvoke(
         self, state: DiscoveryState, config: dict | None = None
     ) -> DiscoveryState:
-        """Run all nodes sequentially."""
         result: dict[str, Any] = dict(state)
+        n = self._nodes
 
-        for node_fn in (route_query, quran_rag_node, linguistic_node):
-            updates = await node_fn(result)  # type: ignore[arg-type]
+        for fn_name in ("route_query", "quran_rag", "linguistic"):
+            updates = await n[fn_name](result)
             result.update(updates)
 
-        # parallel: science, tafseer, humanities
         _state = cast(DiscoveryState, result)
         sci, taf, hum = await asyncio.gather(
-            science_node(_state),
-            tafseer_node(_state),
-            humanities_node(_state),
+            n["science"](_state),
+            n["tafseer"](_state),
+            n["humanities"](_state),
         )
-        # Merge results carefully — concatenate streaming_updates
         base_updates = list(result.get("streaming_updates", []))
         for partial in (sci, taf, hum):
             for key, val in partial.items():
@@ -295,8 +305,8 @@ class _FallbackGraph:
                     result[key] = val
         result["streaming_updates"] = base_updates
 
-        for node_fn in (synthesis_node, quality_review_node, kg_update_node):
-            updates = await node_fn(result)  # type: ignore[arg-type]
+        for fn_name in ("synthesis", "quality_review", "kg_update"):
+            updates = await n[fn_name](result)
             result.update(updates)
 
         return cast(DiscoveryState, result)

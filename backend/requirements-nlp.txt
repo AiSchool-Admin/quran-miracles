@@ -1,0 +1,4 @@
+# Arabic NLP dependencies (heavy — includes PyTorch)
+# Install separately: pip install -r requirements-nlp.txt
+-r requirements.txt
+camel-tools==1.2.0

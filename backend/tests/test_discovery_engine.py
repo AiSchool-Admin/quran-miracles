@@ -14,6 +14,7 @@ from discovery_engine.agents.humanities import HumanitiesAgent
 from discovery_engine.agents.linguistic import LinguisticAnalysisAgent
 from discovery_engine.agents.quality_review import QualityReviewAgent
 from discovery_engine.agents.quran_rag import QuranRAGAgent
+from discovery_engine.agents.router import RouteQueryAgent
 from discovery_engine.agents.scientific import ScientificExplorerAgent
 from discovery_engine.agents.synthesis import SynthesisAgent
 from discovery_engine.agents.tafseer import TafseerAgent
@@ -24,6 +25,51 @@ _has_fastapi = importlib.util.find_spec("fastapi") is not None
 
 _QUERY = "الماء في القرآن الكريم"
 _DISCIPLINES = ["physics", "biology", "psychology"]
+
+
+# ═══════════════════════════════════════════════════════════════
+# 0. RouteQueryAgent
+# ═══════════════════════════════════════════════════════════════
+
+
+def test_router_water_query():
+    """Water query touches multiple domains → should route to parallel."""
+    agent = RouteQueryAgent()
+    state: DiscoveryState = {
+        "query": "الماء في القرآن الكريم",
+        "disciplines": ["physics", "psychology", "economics"],
+    }
+    route = agent.route(state)
+    assert route in ("science", "parallel")
+
+
+def test_router_tafseer_query():
+    """Query about tafseer → should route to tafseer."""
+    agent = RouteQueryAgent()
+    state: DiscoveryState = {
+        "query": "تفسير الشعراوي لسورة البقرة",
+    }
+    route = agent.route(state)
+    assert route == "tafseer"
+
+
+def test_router_psychology_query():
+    """Query about psychology → should route to humanities."""
+    agent = RouteQueryAgent()
+    state: DiscoveryState = {
+        "query": "الصبر والطمأنينة النفسية في القرآن",
+        "disciplines": ["psychology", "sociology"],
+    }
+    route = agent.route(state)
+    assert route == "humanities"
+
+
+def test_router_autonomous_mode():
+    """Autonomous mode → always parallel."""
+    agent = RouteQueryAgent()
+    state: DiscoveryState = {"query": "test", "mode": "autonomous"}
+    route = agent.route(state)
+    assert route == "parallel"
 
 
 # ═══════════════════════════════════════════════════════════════

@@ -19,6 +19,7 @@ from discovery_engine.agents.humanities import HumanitiesAgent
 from discovery_engine.agents.linguistic import LinguisticAnalysisAgent
 from discovery_engine.agents.quality_review import QualityReviewAgent
 from discovery_engine.agents.quran_rag import QuranRAGAgent
+from discovery_engine.agents.router import RouteQueryAgent
 from discovery_engine.agents.scientific import ScientificExplorerAgent
 from discovery_engine.agents.synthesis import SynthesisAgent
 from discovery_engine.agents.tafseer import TafseerAgent
@@ -32,7 +33,7 @@ _MAX_ITERATIONS = 3
 
 
 async def route_query(state: DiscoveryState) -> DiscoveryState:
-    """Route incoming query — set defaults and validate."""
+    """Route incoming query — classify type and set defaults."""
     updates: DiscoveryState = {}
     if not state.get("disciplines"):
         updates["disciplines"] = ["physics", "biology", "psychology"]
@@ -40,8 +41,14 @@ async def route_query(state: DiscoveryState) -> DiscoveryState:
         updates["mode"] = "guided"
     if not state.get("iteration_count"):
         updates["iteration_count"] = 0
+
+    # Classify query type using the router agent
+    router = RouteQueryAgent()
+    effective_state = {**state, **updates}
+    route = router.route(effective_state)
+
     updates["streaming_updates"] = state.get("streaming_updates", []) + [
-        {"stage": "route_query", "status": "done"}
+        {"stage": "route_query", "status": "done", "route": route}
     ]
     return updates
 

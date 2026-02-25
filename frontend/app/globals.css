@@ -2,44 +2,125 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  @font-face {
-    font-family: "Scheherazade New";
-    src: url("/fonts/ScheherazadeNew-Regular.ttf") format("truetype");
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-  }
+:root {
+  --color-islamic-green: #1a3a2a;
+  --color-gold: #d4af37;
+  --color-bg: #0d1f17;
+  --color-surface: #152b1e;
+  --color-text: #e8e0d0;
+  --font-quran: "Scheherazade New", serif;
+}
 
-  @font-face {
-    font-family: "Scheherazade New";
-    src: url("/fonts/ScheherazadeNew-Bold.ttf") format("truetype");
-    font-weight: 700;
-    font-style: normal;
-    font-display: swap;
-  }
+body {
+  font-family: "IBM Plex Sans Arabic", sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
 
-  @font-face {
-    font-family: "IBM Plex Arabic";
-    src: url("/fonts/IBMPlexArabic-Regular.ttf") format("truetype");
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-  }
+.quran-text {
+  font-family: var(--font-quran);
+  font-size: 24px;
+  line-height: 2.2;
+  text-align: center;
+}
 
-  @font-face {
-    font-family: "IBM Plex Arabic";
-    src: url("/fonts/IBMPlexArabic-Bold.ttf") format("truetype");
-    font-weight: 700;
-    font-style: normal;
-    font-display: swap;
+/* Star background for landing page */
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.3;
   }
+  50% {
+    opacity: 1;
+  }
+}
 
-  html {
-    direction: rtl;
-  }
+.stars-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
 
-  body {
-    @apply font-ui text-gray-900 bg-white;
-  }
+.stars-bg::before,
+.stars-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+      1px 1px at 20% 30%,
+      rgba(212, 175, 55, 0.4) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      1px 1px at 40% 70%,
+      rgba(212, 175, 55, 0.3) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      1.5px 1.5px at 60% 20%,
+      rgba(212, 175, 55, 0.5) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      1px 1px at 80% 50%,
+      rgba(212, 175, 55, 0.3) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      1px 1px at 10% 80%,
+      rgba(212, 175, 55, 0.4) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      1.5px 1.5px at 50% 90%,
+      rgba(212, 175, 55, 0.3) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      1px 1px at 70% 40%,
+      rgba(212, 175, 55, 0.4) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      1px 1px at 90% 10%,
+      rgba(212, 175, 55, 0.3) 0%,
+      transparent 100%
+    );
+  animation: twinkle 4s ease-in-out infinite;
+}
+
+.stars-bg::after {
+  background-image: radial-gradient(
+      1px 1px at 25% 55%,
+      rgba(212, 175, 55, 0.35) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      1.5px 1.5px at 45% 15%,
+      rgba(212, 175, 55, 0.45) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      1px 1px at 65% 85%,
+      rgba(212, 175, 55, 0.3) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      1px 1px at 85% 65%,
+      rgba(212, 175, 55, 0.4) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      1.5px 1.5px at 15% 35%,
+      rgba(212, 175, 55, 0.35) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      1px 1px at 55% 45%,
+      rgba(212, 175, 55, 0.3) 0%,
+      transparent 100%
+    );
+  animation: twinkle 6s ease-in-out infinite 2s;
 }

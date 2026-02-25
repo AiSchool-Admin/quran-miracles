@@ -135,8 +135,25 @@ class QuranRAGAgent:
     async def _text_search(
         self, conn: Any, query: str
     ) -> list[dict[str, Any]]:
-        """Search using full-text search + trigram LIKE."""
-        # First try tsvector full-text search
+        """Search using full-text search + LIKE fallback.
+
+        Strategy:
+          1. Try tsvector with AND (all terms must match)
+          2. Try tsvector with OR (any term matches, ranked by count)
+          3. Fallback: LIKE search per keyword on text_clean
+        """
+        # Strip common Arabic stop words that won't appear in verse text
+        _STOP_WORDS = {
+            "في", "من", "إلى", "على", "عن", "هل", "ما", "هو", "هي",
+            "التي", "الذي", "كان", "كانت", "هذا", "هذه", "ذلك", "تلك",
+            "القرآن", "الكريم", "القرآنية", "قرآنية",
+        }
+        keywords = [
+            w for w in query.split()
+            if w not in _STOP_WORDS and len(w) > 1
+        ]
+
+        # 1. Try tsvector AND search (exact match)
         rows = await conn.fetch(
             """
             SELECT id, surah_number, verse_number, text_uthmani,
@@ -149,6 +166,22 @@ class QuranRAGAgent:
             """,
             query,
         )
+
+        if not rows and keywords:
+            # 2. Try tsvector OR search (any keyword matches)
+            or_query = " | ".join(keywords)
+            rows = await conn.fetch(
+                """
+                SELECT id, surah_number, verse_number, text_uthmani,
+                       text_simple, text_clean,
+                       ts_rank(search_vector, to_tsquery('simple', $1)) AS rank
+                FROM verses
+                WHERE search_vector @@ to_tsquery('simple', $1)
+                ORDER BY rank DESC
+                LIMIT 10
+                """,
+                or_query,
+            )
 
         if rows:
             return [
@@ -165,7 +198,8 @@ class QuranRAGAgent:
                 for r in rows
             ]
 
-        # Fallback: LIKE search on text_clean
+        # 3. Fallback: LIKE search per keyword on text_clean
+        search_term = keywords[0] if keywords else query
         rows = await conn.fetch(
             """
             SELECT id, surah_number, verse_number, text_uthmani,
@@ -175,7 +209,7 @@ class QuranRAGAgent:
                OR text_simple LIKE '%' || $1 || '%'
             LIMIT 10
             """,
-            query,
+            search_term,
         )
 
         return [

@@ -69,9 +69,13 @@ function getDemoPredictions(
   verses: string[],
   discipline: string,
 ): DemoPrediction[] {
-  const hasWater = verses.some(
-    (v) => v.includes("ماء") || v.includes("الماء") || v.includes("الْمَآءِ"),
-  );
+  // كشف آيات الماء — يزيل التشكيل أولاً لضمان المطابقة
+  const stripDiacritics = (s: string) =>
+    s.replace(/[\u064B-\u065F\u0670]/g, "");
+  const hasWater = verses.some((v) => {
+    const clean = stripDiacritics(v);
+    return clean.includes("ماء") || clean.includes("الماء");
+  });
 
   if (hasWater) {
     return getWaterPredictions(discipline);

@@ -18,20 +18,46 @@ async def generate_predictions(request: Request, body: dict):
     Input:  { verses: [...], discipline: "physics" }
     Output: { predictions: [...], research_maps: [...] }
     """
-    verses = body.get("verses", [])
+    raw_verses = body.get("verses", [])
     discipline = body.get("discipline", "physics")
+
+    # تحويل النصوص إلى dicts إذا أرسل الـ frontend نصوصاً
+    verses: list[dict] = []
+    for v in raw_verses:
+        if isinstance(v, str):
+            verses.append({"text_uthmani": v, "text": v})
+        elif isinstance(v, dict):
+            verses.append(v)
+
+    # التحقق من توفر LLM client
+    llm = getattr(request.app.state, "llm", None)
+    if llm is None:
+        return JSONResponse(
+            {"error": "LLM client غير متاح", "predictions": [], "research_maps": [], "total": 0},
+            status_code=503,
+        )
 
     # تهيئة المحركات
     validator = StatisticalSafeguards()
-    engine = AbductiveReasoningEngine(
-        request.app.state.llm, validator
-    )
+    engine = AbductiveReasoningEngine(llm, validator)
     navigator = ResearchNavigator()
 
-    # توليد الفرضيات
-    predictions = await engine.generate_predictions(
-        verses, discipline, max_hypotheses=5
-    )
+    try:
+        # توليد الفرضيات
+        predictions = await engine.generate_predictions(
+            verses, discipline, max_hypotheses=5
+        )
+    except (TypeError, Exception) as exc:
+        # TypeError عند غياب API key، أو أي خطأ آخر من الـ LLM
+        return JSONResponse(
+            {
+                "error": f"خطأ في محرك التنبؤ: {exc}",
+                "predictions": [],
+                "research_maps": [],
+                "total": 0,
+            },
+            status_code=503,
+        )
 
     # توليد خرائط البحث
     research_maps = [

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Literal, TypedDict
+import operator
+from typing import Annotated, Literal, TypedDict
 
 
 class DiscoveryState(TypedDict, total=False):
@@ -40,8 +41,8 @@ class DiscoveryState(TypedDict, total=False):
     should_deepen: bool
     iteration_count: int
 
-    # ── Streaming ──────────────────────────────────────────
-    streaming_updates: list[dict]
+    # ── Streaming (Annotated for concurrent node updates) ──
+    streaming_updates: Annotated[list[dict], operator.add]
 
     # ── Error handling ─────────────────────────────────────
     error: str | None

@@ -5,7 +5,7 @@ interface VerseCardProps {
   verse_number: number;
   text_uthmani: string;
   similarity?: number;
-  confidence_tier?: "tier_1" | "tier_2" | "tier_3";
+  confidence_tier?: string;
 }
 
 export function VerseCard({

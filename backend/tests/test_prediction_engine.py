@@ -9,10 +9,9 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -23,7 +22,6 @@ from discovery_engine.prediction.abductive_engine import (
 )
 from discovery_engine.prediction.research_navigator import ResearchNavigator
 from discovery_engine.prediction.statistical_safeguards import StatisticalSafeguards
-
 
 # ═══════════════════════════════════════════════════════
 # بيانات تجريبية — نتائج بحث "الماء" (5 آيات)
@@ -43,7 +41,10 @@ WATER_VERSES: list[dict[str, Any]] = [
             "أولم ير الذين كفروا أن السماوات والأرض كانتا رتقا "
             "ففتقناهما وجعلنا من الماء كل شيء حي أفلا يؤمنون"
         ),
-        "text_clean": "اولم ير الذين كفروا ان السماوات والارض كانتا رتقا ففتقناهما وجعلنا من الماء كل شيء حي افلا يؤمنون",
+        "text_clean": (
+            "اولم ير الذين كفروا ان السماوات والارض كانتا رتقا "
+            "ففتقناهما وجعلنا من الماء كل شيء حي افلا يؤمنون"
+        ),
     },
     {
         "id": 3088,
@@ -61,7 +62,10 @@ WATER_VERSES: list[dict[str, Any]] = [
             "ومنهم من يمشي على رجلين ومنهم من يمشي على أربع "
             "يخلق الله ما يشاء إن الله على كل شيء قدير"
         ),
-        "text_clean": "والله خلق كل دابة من ماء فمنهم من يمشي على بطنه ومنهم من يمشي على رجلين ومنهم من يمشي على اربع يخلق الله ما يشاء ان الله على كل شيء قدير",
+        "text_clean": (
+            "والله خلق كل دابة من ماء فمنهم من يمشي على بطنه ومنهم من يمشي "
+            "على رجلين ومنهم من يمشي على اربع يخلق الله ما يشاء ان الله على كل شيء قدير"
+        ),
     },
     {
         "id": 3425,
@@ -356,7 +360,7 @@ class TestPredictionGenerate:
             1 for p in predictions if p.initial_tier == "tier_0"
         )
         assert tier_0_count == 0, f"وُجدت {tier_0_count} فرضيات tier_0!"
-        print(f"\n✅ لا يوجد tier_0 في النتائج")
+        print("\n✅ لا يوجد tier_0 في النتائج")
 
     async def test_predictions_sorted_by_quality(self, mock_llm, validator):
         """التحقق أن الفرضيات مُرتبة بالجودة (الأعلى أولاً)."""
@@ -377,7 +381,7 @@ class TestPredictionGenerate:
                 f"الفرضية {i+1} (score={scores[i]:.3f}) أقل من "
                 f"الفرضية {i+2} (score={scores[i+1]:.3f})"
             )
-        print(f"\n✅ الفرضيات مُرتبة تنازلياً بالجودة")
+        print("\n✅ الفرضيات مُرتبة تنازلياً بالجودة")
 
     async def test_research_maps_generated(
         self, mock_llm, validator, navigator
@@ -441,7 +445,7 @@ class TestMCTSExplore:
         )
 
         print(f"\n{'='*60}")
-        print(f"نتائج MCTS — الماء في القرآن (biology)")
+        print("نتائج MCTS — الماء في القرآن (biology)")
         print(f"{'='*60}")
 
         # ── ✅ فرضيات مُنتجة ──
@@ -467,11 +471,11 @@ class TestMCTSExplore:
             assert scores[i] >= scores[i + 1], (
                 f"ترتيب خاطئ: [{i}]={scores[i]:.3f} < [{i+1}]={scores[i+1]:.3f}"
             )
-        print(f"\n✅ الفرضيات مُرتبة تنازلياً")
+        print("\n✅ الفرضيات مُرتبة تنازلياً")
 
         # ── ✅ الحد الأقصى 5 ──
         assert len(best) <= 5, f"تجاوز الحد الأقصى: {len(best)} > 5"
-        print(f"✅ عدد الفرضيات ≤ 5")
+        print("✅ عدد الفرضيات ≤ 5")
 
     async def test_mcts_20_iterations(self, mock_llm, mock_db, validator):
         """التحقق أن 20 iteration اكتملت (الجذر visits ≥ 20)."""

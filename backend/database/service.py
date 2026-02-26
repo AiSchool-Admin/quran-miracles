@@ -12,7 +12,6 @@ from typing import Any
 import asyncpg
 from pgvector.asyncpg import register_vector
 
-
 _DB_DEFAULT = "postgresql://quran_user:changeme@localhost:5432/quran_miracles"
 
 
@@ -182,12 +181,12 @@ class DatabaseService:
         pool = self._ensure_pool()
 
         # Strip common stop words
-        _STOP_WORDS = {
+        stop_words = {
             "في", "من", "إلى", "على", "عن", "هل", "ما", "هو", "هي",
             "التي", "الذي", "كان", "كانت", "هذا", "هذه", "ذلك", "تلك",
             "القرآن", "الكريم", "القرآنية", "قرآنية",
         }
-        keywords = [w for w in query.split() if w not in _STOP_WORDS and len(w) > 1]
+        keywords = [w for w in query.split() if w not in stop_words and len(w) > 1]
 
         # 1. tsvector AND
         rows = await pool.fetch(

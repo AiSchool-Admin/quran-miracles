@@ -29,10 +29,12 @@ build/
 .DS_Store
 Thumbs.db
 
-# === Testing ===
+# === Testing & Linting ===
 .coverage
 htmlcov/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # === Downloaded Data (regenerate via pipelines) ===
 data/quran/*.json
@@ -44,3 +46,6 @@ data/science/*.json
 *.pid
 .vercel
 .railway
+
+# === Shaarawy PDFs (large binary files) ===
+data/shaarawy/*.pdf

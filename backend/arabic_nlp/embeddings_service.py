@@ -11,7 +11,6 @@ the pre-computed verse corpus using the same TF-IDF vectorizer.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re
 from typing import Any
@@ -19,8 +18,6 @@ from typing import Any
 import asyncpg
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.preprocessing import normalize
-
 
 DIMENSIONS = 1536
 
@@ -134,7 +131,7 @@ class EmbeddingsService:
 
         # Weighted average of pre-computed verse embeddings
         weighted_emb = np.zeros(DIMENSIONS, dtype=np.float64)
-        for idx, w in zip(top_indices, weights):
+        for idx, w in zip(top_indices, weights, strict=False):
             weighted_emb += w * self._verse_embeddings[idx]
 
         # L2 normalize

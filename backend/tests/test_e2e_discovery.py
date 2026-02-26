@@ -9,7 +9,6 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import sys
 
@@ -118,7 +117,6 @@ async def run_e2e_test():
         print(f"   {h.get('verse_key', '?')}: correlation_type={h.get('correlation_type', '?')}")
 
     # Synthesis
-    synthesis = result.get("synthesis", "")
     tier = result.get("confidence_tier", "?")
     print(f"\n✅ confidence_tier: {tier}")
 
@@ -137,7 +135,7 @@ async def run_e2e_test():
                 discovery_id,
             )
             if row:
-                print(f"✅ حُفظ الاكتشاف في DB!")
+                print("✅ حُفظ الاكتشاف في DB!")
                 print(f"   title_ar: {row['title_ar'][:80]}...")
                 print(f"   confidence_tier: {row['confidence_tier']}")
                 print(f"   created_at: {row['created_at']}")

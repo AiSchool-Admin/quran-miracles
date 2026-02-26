@@ -33,9 +33,9 @@ class HypothesisNode:
             return float("inf")
         if not self.parent:
             return self.value / self.visits
-        C = 1.414
+        c_param = 1.414
         exploitation = self.value / self.visits
-        exploration = C * math.sqrt(
+        exploration = c_param * math.sqrt(
             math.log(self.parent.visits) / self.visits
         )
         return exploitation + exploration

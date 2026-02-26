@@ -1,8 +1,16 @@
 """Shared dependencies for API routes."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings
+
+# Look for .env in both backend/ and project root
+_ENV_FILES = [
+    Path(__file__).resolve().parent.parent / ".env",        # backend/.env
+    Path(__file__).resolve().parent.parent.parent / ".env",  # project root .env
+]
+_ENV_FILE = next((f for f in _ENV_FILES if f.exists()), ".env")
 
 
 class Settings(BaseSettings):
@@ -14,7 +22,7 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = ""
 
-    model_config = {"env_file": ".env"}
+    model_config = {"env_file": str(_ENV_FILE)}
 
 
 @lru_cache

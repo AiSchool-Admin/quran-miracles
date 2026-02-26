@@ -29,7 +29,6 @@ apscheduler==3.10.4
 # === Embeddings & NLP ===
 openai==1.55.0
 numpy>=1.26.0
-scikit-learn>=1.4.0
 
 # === SSE Streaming ===
 sse-starlette==2.1.0
@@ -38,9 +37,3 @@ sse-starlette==2.1.0
 httpx==0.28.0
 python-dotenv==1.0.1
 python-multipart==0.0.12
-
-# === Dev / Testing ===
-pytest==8.3.0
-pytest-asyncio==0.24.0
-ruff==0.8.0
-mypy==1.13.0

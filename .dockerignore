@@ -1,0 +1,49 @@
+# ── Build context exclusions ──
+.git
+.github
+.vscode
+.idea
+
+# ── Frontend (not needed for backend image) ──
+frontend/
+node_modules/
+.next/
+
+# ── Documentation ──
+docs/
+*.md
+!backend/README.md
+
+# ── Data files (fetched at runtime) ──
+data/quran/*.json
+data/tafseers/*.json
+data/shaarawy/*.pdf
+data/science/
+
+# ── Python artifacts ──
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# ── Environment ──
+.env
+.env.*
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+*.log
+
+# ── Other ──
+scripts/
+docker-compose.yml
+.vercel
+.railway

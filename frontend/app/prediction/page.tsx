@@ -4,9 +4,6 @@ import { useState } from "react";
 import { TierBadge } from "@/components/ui/TierBadge";
 import type { Prediction, ResearchMap } from "@/types";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 const DISCIPLINES = [
   { id: "physics", label: "فيزياء" },
   { id: "biology", label: "أحياء" },
@@ -41,7 +38,7 @@ export default function PredictionPage() {
         .map((v) => v.trim())
         .filter(Boolean);
 
-      const res = await fetch(`${API_BASE}/api/prediction/generate`, {
+      const res = await fetch(`/api/prediction/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ verses, discipline }),

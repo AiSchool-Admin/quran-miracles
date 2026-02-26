@@ -4,9 +4,6 @@ import { useEffect, useState } from "react";
 import { VerseCard } from "@/components/quran/VerseCard";
 import type { Verse } from "@/types";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 /** Static surah metadata — used as the source of truth for the index. */
 const SURAH_NAMES: { number: number; name: string; verses: number; type: string }[] = [
   { number: 1, name: "الفاتحة", verses: 7, type: "مكية" },
@@ -145,7 +142,7 @@ export default function QuranPage() {
     setLoading(true);
     setVerses([]);
 
-    fetch(`${API_BASE}/api/quran/surahs/${selectedSurah}/verses`)
+    fetch(`/api/quran/surahs/${selectedSurah}/verses`)
       .then((r) => r.json())
       .then((data) => setVerses(data.verses || []))
       .catch(() => setVerses([]))
@@ -160,7 +157,7 @@ export default function QuranPage() {
 
     try {
       const res = await fetch(
-        `${API_BASE}/api/quran/search?q=${encodeURIComponent(searchQuery)}`,
+        `/api/quran/search?q=${encodeURIComponent(searchQuery)}`,
       );
       const data = await res.json();
       setSearchResults(data.results || []);

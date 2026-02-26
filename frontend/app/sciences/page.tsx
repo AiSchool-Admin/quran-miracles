@@ -4,9 +4,6 @@ import { useEffect, useState } from "react";
 import { TierBadge } from "@/components/ui/TierBadge";
 import type { Discovery } from "@/types";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 const TIER_FILTERS = [
   { value: "", label: "الكل" },
   { value: "tier_1", label: "فرضية أولية" },
@@ -36,7 +33,7 @@ export default function SciencesPage() {
     const params = new URLSearchParams();
     if (tierFilter) params.set("tier", tierFilter);
 
-    fetch(`${API_BASE}/api/discovery/discoveries?${params}`)
+    fetch(`/api/discovery/discoveries?${params}`)
       .then((r) => r.json())
       .then((data) => setDiscoveries(data.discoveries || []))
       .catch(() => setDiscoveries([]))

@@ -4,9 +4,6 @@ import { useState } from "react";
 import { VerseCard } from "@/components/quran/VerseCard";
 import { TierBadge } from "@/components/ui/TierBadge";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 const DISCIPLINES = [
   { id: "physics", label: "فيزياء" },
   { id: "biology", label: "أحياء" },
@@ -57,7 +54,7 @@ export default function DiscoveryPage() {
     setStage("جاري البحث...");
 
     try {
-      const response = await fetch(`${API_BASE}/api/discovery/stream`, {
+      const response = await fetch(`/api/discovery/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, disciplines, mode: "guided" }),
@@ -107,6 +104,10 @@ export default function DiscoveryPage() {
                 setStage("اكتمل الاستكشاف");
                 if (data.synthesis) setSynthesis(data.synthesis);
                 if (data.quality_score) setQualityScore(data.quality_score);
+                setIsLoading(false);
+                break;
+              case "error":
+                setStage(data.message || "حدث خطأ في الاتصال بالخادم");
                 setIsLoading(false);
                 break;
             }

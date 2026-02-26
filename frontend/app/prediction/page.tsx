@@ -23,6 +23,7 @@ export default function PredictionPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [expandedMap, setExpandedMap] = useState<string | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
 
   const generatePredictions = async () => {
     if (!verseInput.trim()) return;
@@ -31,6 +32,7 @@ export default function PredictionPage() {
     setError("");
     setPredictions([]);
     setResearchMaps([]);
+    setIsDemo(false);
 
     try {
       const verses = verseInput
@@ -49,6 +51,7 @@ export default function PredictionPage() {
       const data = await res.json();
       setPredictions(data.predictions || []);
       setResearchMaps(data.research_maps || []);
+      setIsDemo(!!data.demo);
     } catch {
       setError("تعذر الاتصال بمحرك التنبؤ — تأكد من تشغيل الخادم الخلفي");
     } finally {
@@ -217,6 +220,26 @@ export default function PredictionPage() {
         </div>
       )}
 
+      {/* Demo banner */}
+      {isDemo && predictions.length > 0 && (
+        <div
+          style={{
+            background: "rgba(192, 131, 58, 0.15)",
+            border: "1px solid rgba(192, 131, 58, 0.4)",
+            borderRadius: "8px",
+            padding: "14px 20px",
+            marginBottom: "24px",
+            color: "var(--color-gold)",
+            fontSize: "14px",
+            lineHeight: "1.8",
+            textAlign: "center",
+          }}
+        >
+          وضع عرض توضيحي — هذه فرضيات مُعدّة مسبقاً للتوضيح. لنتائج حقيقية
+          بالذكاء الاصطناعي، يجب ربط الخادم الخلفي.
+        </div>
+      )}
+
       {/* Predictions */}
       {predictions.length > 0 && (
         <section>
@@ -353,6 +376,23 @@ export default function PredictionPage() {
                         ))}
                       </ol>
                     )}
+                  </div>
+                )}
+
+                {/* Disclaimer */}
+                {p.disclaimer && (
+                  <div
+                    style={{
+                      marginTop: "12px",
+                      padding: "10px 14px",
+                      background: "rgba(138, 100, 58, 0.1)",
+                      borderRadius: "6px",
+                      fontSize: "13px",
+                      color: "#a98",
+                      lineHeight: "1.8",
+                    }}
+                  >
+                    {p.disclaimer}
                   </div>
                 )}
               </div>

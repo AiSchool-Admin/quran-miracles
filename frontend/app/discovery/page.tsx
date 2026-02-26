@@ -36,6 +36,7 @@ export default function DiscoveryPage() {
   const [synthesis, setSynthesis] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [qualityScore, setQualityScore] = useState<number | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
 
   const toggleDiscipline = (id: string) => {
     setDisciplines((prev) =>
@@ -51,6 +52,7 @@ export default function DiscoveryPage() {
     setFindings([]);
     setSynthesis("");
     setQualityScore(null);
+    setIsDemo(false);
     setStage("جاري البحث...");
 
     try {
@@ -104,6 +106,7 @@ export default function DiscoveryPage() {
                 setStage("اكتمل الاستكشاف");
                 if (data.synthesis) setSynthesis(data.synthesis);
                 if (data.quality_score) setQualityScore(data.quality_score);
+                if (data.demo) setIsDemo(true);
                 setIsLoading(false);
                 break;
               case "error":
@@ -226,6 +229,26 @@ export default function DiscoveryPage() {
       >
         {isLoading ? `⏳ ${stage}` : "ابدأ الاستكشاف"}
       </button>
+
+      {/* Demo banner */}
+      {isDemo && !isLoading && (
+        <div
+          style={{
+            background: "rgba(192, 131, 58, 0.15)",
+            border: "1px solid rgba(192, 131, 58, 0.4)",
+            borderRadius: "8px",
+            padding: "14px 20px",
+            marginBottom: "24px",
+            color: "var(--color-gold)",
+            fontSize: "14px",
+            lineHeight: "1.8",
+            textAlign: "center",
+          }}
+        >
+          وضع عرض توضيحي — هذه نتائج مُعدّة مسبقاً للتوضيح. لنتائج حقيقية
+          بالذكاء الاصطناعي، يجب ربط الخادم الخلفي.
+        </div>
+      )}
 
       {/* الآيات */}
       {verses.length > 0 && (

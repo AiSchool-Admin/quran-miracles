@@ -25,16 +25,21 @@ class DatabaseService:
         self.db_url = self.db_url.replace("postgresql+asyncpg://", "postgresql://")
         self.pool: asyncpg.Pool | None = None
 
-    async def connect(self) -> None:
+    async def connect(self, timeout: float = 10) -> None:
         """Initialize the connection pool with pgvector support."""
+        import asyncio
+
         if self.pool is not None:
             return
-        self.pool = await asyncpg.create_pool(
-            self.db_url,
-            min_size=5,
-            max_size=20,
-            command_timeout=30,
-            init=_init_connection,
+        self.pool = await asyncio.wait_for(
+            asyncpg.create_pool(
+                self.db_url,
+                min_size=1,
+                max_size=20,
+                command_timeout=30,
+                init=_init_connection,
+            ),
+            timeout=timeout,
         )
 
     async def close(self) -> None:

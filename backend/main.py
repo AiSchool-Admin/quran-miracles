@@ -1,5 +1,6 @@
 """معجزات القرآن الكريم — FastAPI Application Entry Point."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -15,34 +16,43 @@ from discovery_engine.autonomous.scheduler import AutonomousDiscoveryScheduler
 from discovery_engine.core.graph import build_discovery_graph
 
 
+async def _init_embeddings_background(app: FastAPI, db_url: str) -> None:
+    """Load embeddings in background — doesn't block server startup."""
+    try:
+        embeddings = EmbeddingsService()
+        await embeddings.initialize(db_url)
+        app.state.embeddings = embeddings
+        # Rebuild graph with embeddings now available
+        app.state.graph = build_discovery_graph(
+            db=app.state.db, embeddings=embeddings
+        )
+        print("✅ Embeddings loaded (background)")
+    except Exception as exc:
+        print(f"⚠️ Embeddings background load failed: {exc}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ── Startup ─────────────────────────────────────────────
     settings = get_settings()
     db: DatabaseService | None = None
-    embeddings: EmbeddingsService | None = None
 
     try:
         db = DatabaseService(settings.database_url)
-        await db.connect()
+        await db.connect(timeout=8)
         app.state.db = db
         print("✅ Database connected")
     except Exception as exc:
         print(f"⚠️ Database unavailable — running in degraded mode: {exc}")
         app.state.db = None
 
-    try:
-        if db is not None:
-            embeddings = EmbeddingsService()
-            await embeddings.initialize(settings.database_url)
-            app.state.embeddings = embeddings
-            print("✅ Embeddings loaded")
-        else:
-            app.state.embeddings = None
-            print("⚠️ Embeddings skipped — no database")
-    except Exception as exc:
-        print(f"⚠️ Embeddings unavailable: {exc}")
-        app.state.embeddings = None
+    # Embeddings: start loading in background (don't block startup)
+    app.state.embeddings = None
+    if db is not None:
+        asyncio.create_task(_init_embeddings_background(app, settings.database_url))
+        print("⏳ Embeddings loading in background...")
+    else:
+        print("⚠️ Embeddings skipped — no database")
 
     # Build LangGraph — works with or without services
     app.state.graph = build_discovery_graph(

@@ -54,7 +54,77 @@ class DatabaseService:
             raise RuntimeError(msg)
         return self.pool
 
-    # ── Verse queries ─────────────────────────────────────────
+    # ── Surah / Verse lookups ─────────────────────────────────
+
+    async def list_surahs(self) -> list[dict[str, Any]]:
+        """Return all 114 surahs ordered by number."""
+        pool = self._ensure_pool()
+        rows = await pool.fetch(
+            """
+            SELECT number, name_arabic, name_english, name_transliteration,
+                   revelation_type, revelation_order, verse_count,
+                   word_count, letter_count, muqattaat,
+                   juz_start, page_start
+            FROM surahs
+            ORDER BY number
+            """
+        )
+        return [dict(r) for r in rows]
+
+    async def get_surah(self, surah_number: int) -> dict[str, Any] | None:
+        """Return a single surah by its number (1-114)."""
+        pool = self._ensure_pool()
+        row = await pool.fetchrow(
+            """
+            SELECT number, name_arabic, name_english, name_transliteration,
+                   revelation_type, revelation_order, verse_count,
+                   word_count, letter_count, muqattaat,
+                   juz_start, page_start, themes_ar, summary_ar
+            FROM surahs
+            WHERE number = $1
+            """,
+            surah_number,
+        )
+        return dict(row) if row else None
+
+    async def get_verses_by_surah(
+        self, surah_number: int
+    ) -> list[dict[str, Any]]:
+        """Return all verses for a given surah, ordered by verse_number."""
+        pool = self._ensure_pool()
+        rows = await pool.fetch(
+            """
+            SELECT id, surah_number, verse_number,
+                   text_uthmani, text_simple, text_clean,
+                   juz, page_number, word_count, letter_count
+            FROM verses
+            WHERE surah_number = $1
+            ORDER BY verse_number
+            """,
+            surah_number,
+        )
+        return [dict(r) for r in rows]
+
+    async def get_verse_detail(
+        self, surah_number: int, verse_number: int
+    ) -> dict[str, Any] | None:
+        """Return a single verse with extended metadata."""
+        pool = self._ensure_pool()
+        row = await pool.fetchrow(
+            """
+            SELECT id, surah_number, verse_number,
+                   text_uthmani, text_simple, text_clean,
+                   juz, page_number, word_count, letter_count,
+                   sajda, sajda_type, themes_ar
+            FROM verses
+            WHERE surah_number = $1 AND verse_number = $2
+            """,
+            surah_number,
+            verse_number,
+        )
+        return dict(row) if row else None
+
+    # ── Verse search ───────────────────────────────────────────
 
     async def search_verses_by_vector(
         self,

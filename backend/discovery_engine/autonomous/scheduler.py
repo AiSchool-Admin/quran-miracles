@@ -1,16 +1,24 @@
 """المحرك المستقل — يعمل 24/7 في الخلفية.
 
 الجدول الزمني:
+- كل ساعة: فحص الأبحاث العلمية الجديدة
 - كل 6 ساعات: MCTS على موضوع جديد
 - يومياً الساعة 2 صباحاً: مسح الأنماط العددية
 - كل أحد: تقرير أسبوعي
+
+يستخدم AutonomousEngine لتنفيذ المهام الفعلية.
 """
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from .engine import AutonomousEngine
+
 
 class AutonomousDiscoveryScheduler:
-    """يعمل 24/7 بدون تدخل المستخدم."""
+    """يعمل 24/7 بدون تدخل المستخدم.
+
+    يدير جدول المهام ويوكل التنفيذ لـ AutonomousEngine.
+    """
 
     TOPICS_QUEUE = [
         {"topic": "نسبية الزمن", "discipline": "physics"},
@@ -24,13 +32,25 @@ class AutonomousDiscoveryScheduler:
     ]
 
     def __init__(self, engine, db, notifier=None):
-        self.engine = engine
+        self.graph_engine = engine
         self.db = db
         self.notifier = notifier
         self.scheduler = AsyncIOScheduler()
         self.topic_idx = 0
 
+        # المحرك المستقل — ينفذ المهام الفعلية
+        llm = engine.llm if hasattr(engine, "llm") else None
+        self.autonomous = AutonomousEngine(db=db, llm=llm)
+
     def start(self):
+        # كل ساعة: فحص الأبحاث
+        self.scheduler.add_job(
+            self._check_papers,
+            "interval",
+            hours=1,
+            id="paper_check",
+        )
+
         # كل 6 ساعات: MCTS
         self.scheduler.add_job(
             self._run_mcts_session,
@@ -57,9 +77,18 @@ class AutonomousDiscoveryScheduler:
         )
 
         self.scheduler.start()
-        print("✅ المحرك المستقل يعمل في الخلفية")
+        print("✅ المحرك المستقل يعمل في الخلفية (4 مهام مجدولة)")
+
+    async def _check_papers(self):
+        """فحص الأبحاث العلمية الجديدة."""
+        try:
+            papers = await self.autonomous.check_new_papers()
+            print(f"📄 فحص الأبحاث: {len(papers)} بحث جديد")
+        except Exception as e:
+            print(f"⚠️ خطأ في فحص الأبحاث: {e}")
 
     async def _run_mcts_session(self):
+        """جلسة MCTS على موضوع من القائمة الدورية."""
         topic = self.TOPICS_QUEUE[
             self.topic_idx % len(self.TOPICS_QUEUE)
         ]
@@ -68,61 +97,26 @@ class AutonomousDiscoveryScheduler:
         print(f"🔍 MCTS: {topic['topic']}")
 
         try:
-            from discovery_engine.mcts.hypothesis_explorer import (
-                MCTSHypothesisExplorer,
+            result = await self.autonomous.run_mcts_exploration(
+                topic["topic"], topic["discipline"]
             )
-            from discovery_engine.prediction.statistical_safeguards import (
-                StatisticalSafeguards,
-            )
-
-            llm = self.engine.llm if hasattr(self.engine, "llm") else self.engine
-
-            explorer = MCTSHypothesisExplorer(
-                llm, self.db, StatisticalSafeguards()
-            )
-
-            results = await explorer.run_exploration(
-                topic["topic"],
-                topic["discipline"],
-                n_iterations=15,
-            )
-
-            # احفظ في DB
-            if self.db is not None and hasattr(self.db, "pool") and self.db.pool:
-                for r in results:
-                    if r["score"] > 0.7:
-                        await self.db.pool.execute(
-                            """
-                            INSERT INTO discoveries
-                              (query, confidence_tier,
-                               synthesis, quality_score)
-                            VALUES ($1, $2, $3, $4)
-                            ON CONFLICT DO NOTHING
-                            """,
-                            topic["topic"],
-                            "tier_1",
-                            str(r["hypothesis"]),
-                            r["score"],
-                        )
-
-            print(f"✅ MCTS أنتج {len(results)} فرضية")
+            count = result.get("hypothesis_count", 0)
+            print(f"✅ MCTS أنتج {count} فرضية")
         except Exception as e:
             print(f"⚠️ خطأ في MCTS: {e}")
 
     async def _scan_numerical_patterns(self):
-        print("🔢 مسح الأنماط العددية...")
-        # placeholder للتنفيذ المستقبلي
+        """مسح الأنماط العددية."""
+        try:
+            patterns = await self.autonomous.scan_numerical_patterns()
+            print(f"🔢 وُجد {len(patterns)} نمط عددي")
+        except Exception as e:
+            print(f"⚠️ خطأ في مسح الأنماط: {e}")
 
     async def _generate_weekly_report(self):
-        print("📊 تقرير أسبوعي...")
+        """التقرير الأسبوعي."""
         try:
-            if self.db is not None and hasattr(self.db, "pool") and self.db.pool:
-                count = await self.db.pool.fetchval(
-                    "SELECT COUNT(*) FROM discoveries "
-                    "WHERE created_at > NOW() - INTERVAL '7 days'"
-                )
-                print(f"✅ اكتشافات هذا الأسبوع: {count}")
-            else:
-                print("⚠️ قاعدة البيانات غير متاحة — تخطي التقرير")
+            report = await self.autonomous.generate_weekly_report()
+            print(f"📊 التقرير: {report.get('new_discoveries', 0)} اكتشاف")
         except Exception as e:
             print(f"⚠️ خطأ في التقرير: {e}")

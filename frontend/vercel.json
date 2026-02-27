@@ -1,0 +1,26 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "env": {
+    "BACKEND_URL": "https://quran-miracles-production.up.railway.app"
+  },
+  "headers": [
+    {
+      "source": "/api/discovery/stream",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "X-Accel-Buffering", "value": "no" }
+      ]
+    }
+  ],
+  "functions": {
+    "app/api/discovery/stream/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/prediction/generate/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}

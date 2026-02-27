@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "backend/**"
+      - "data/quran/**"
       - ".github/workflows/deploy-backend.yml"
 
 jobs:
@@ -27,5 +28,5 @@ jobs:
 
       - name: Verify API health
         run: |
-          sleep 15
-          curl -f https://api.quran-miracles.railway.app/health || exit 1
+          sleep 30
+          curl -f https://quran-miracles-production.up.railway.app/health || exit 1

@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
   try {
     const res = await fetch(
       `${BACKEND_URL}/api/quran/search?q=${encodeURIComponent(q)}&limit=${limit}`,
-      { signal: AbortSignal.timeout(5000) },
+      { signal: AbortSignal.timeout(15_000) },
     );
     if (res.ok) {
       const data = await res.json();

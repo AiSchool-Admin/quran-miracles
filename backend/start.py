@@ -1,5 +1,10 @@
-"""Railway startup wrapper — ensures errors are visible in deploy logs."""
+"""Railway startup wrapper — bootstrap DB then start uvicorn.
 
+1. Run database bootstrap (apply schema + load Quran data if needed)
+2. Start uvicorn with the FastAPI app
+"""
+
+import asyncio
 import os
 import sys
 
@@ -7,8 +12,24 @@ print("=" * 50, flush=True)
 print("🚀 Starting Quran Miracles API...", flush=True)
 print(f"Python: {sys.version}", flush=True)
 print(f"PORT: {os.environ.get('PORT', 'not set')}", flush=True)
+print(f"DATABASE_URL: {'set' if os.environ.get('DATABASE_URL') else 'NOT SET'}", flush=True)
+print(f"ANTHROPIC_API_KEY: {'set' if os.environ.get('ANTHROPIC_API_KEY') else 'NOT SET'}", flush=True)
 print("=" * 50, flush=True)
 
+# ── Step 1: Bootstrap database ──
+try:
+    from bootstrap_db import bootstrap
+
+    print("\n📋 Running database bootstrap...", flush=True)
+    db_ready = asyncio.run(bootstrap())
+    if db_ready:
+        print("✅ Database ready\n", flush=True)
+    else:
+        print("⚠️ Database not available — API will use fallback mode\n", flush=True)
+except Exception as exc:
+    print(f"⚠️ Bootstrap skipped: {exc}\n", flush=True)
+
+# ── Step 2: Start uvicorn ──
 try:
     import uvicorn
 

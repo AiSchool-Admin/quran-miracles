@@ -22,6 +22,9 @@ COPY --from=builder /install /usr/local
 
 COPY backend/ .
 
+# Copy Quran data for database bootstrap (JSON files from data pipeline)
+COPY data/quran/ /data/quran/
+
 ENV PORT=8000
 ENV PYTHONUNBUFFERED=1
 EXPOSE ${PORT}
